@@ -128,6 +128,10 @@ claude auth login     # uses your Claude subscription; `claude auth status` to v
 
 Without it the agent exits with `Not logged in` and the notes are re-opened.
 
+**Live progress.** The agent runs in streaming mode, so you see each step as it
+happens — the toolbar pill shows the current action (e.g. `↳ Edit app/today/page.tsx`)
+and the sidecar terminal prints the same readable log — instead of a frozen "working…".
+
 Configure via env:
 
 - `CLICKFIX_AGENT_BIN` — agent binary (default `claude`)

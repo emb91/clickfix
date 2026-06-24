@@ -126,7 +126,7 @@
   }
 
   // ----------------------------------------------------------------------- UI
-  var state = { mode: "idle", captured: null, openCount: 0, toast: null, instruction: "", working: false }
+  var state = { mode: "idle", captured: null, openCount: 0, toast: null, instruction: "", working: false, activity: "" }
 
   var root = document.createElement("div")
   root.setAttribute("data-clickfix", "")
@@ -208,6 +208,7 @@
   function runNow() {
     if (state.working) return
     state.working = true
+    state.activity = "starting…"
     render()
     fetch(ORIGIN + "/run", { method: "POST" })
       .then(function (r) {
@@ -238,10 +239,13 @@
       })
       .then(function (s) {
         if (s.running) {
-          setTimeout(pollRun, 1500)
+          if (s.activity) state.activity = s.activity
+          render()
+          setTimeout(pollRun, 1200)
           return
         }
         state.working = false
+        state.activity = ""
         toast(s.ok === false ? "Agent finished with issues" : "Done ✓")
         refreshCount()
       })
@@ -316,10 +320,16 @@
     row.style.cssText = "display:flex;align-items:center;gap:8px"
 
     if (state.working) {
-      var pill = document.createElement("span")
+      var pill = document.createElement("div")
       pill.style.cssText =
-        "background:#0b1220;border:1px solid #2dd4bf;border-radius:999px;padding:6px 12px;font-size:12px;color:#2dd4bf"
-      pill.textContent = "⟳ Claude is working…"
+        "background:#0b1220;border:1px solid #2dd4bf;border-radius:12px;padding:8px 12px;max-width:300px;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
+      pill.innerHTML =
+        '<div style="color:#2dd4bf;font-weight:600;font-size:12px">⟳ Claude is working…</div>' +
+        (state.activity
+          ? '<div style="color:#94a3b8;font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+            esc(state.activity) +
+            "</div>"
+          : "")
       row.appendChild(pill)
     } else if (state.openCount) {
       var work = document.createElement("button")

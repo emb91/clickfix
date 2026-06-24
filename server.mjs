@@ -80,13 +80,45 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   let lastRun = { running: false, startedAt: null, finishedAt: null, dispatched: 0, ok: null, log: "" }
 
   function agentArgs(prompt) {
-    // Override the whole command with CLICKFIX_RUN_CMD (placeholders: {prompt} {port}),
-    // else default to Claude Code headless. Bin overridable via CLICKFIX_AGENT_BIN.
+    // Bin overridable via CLICKFIX_AGENT_BIN. stream-json (requires --verbose) lets us
+    // surface each step live to the terminal + widget instead of waiting for the end.
     const bin = process.env.CLICKFIX_AGENT_BIN || "claude"
     return {
       bin,
-      args: ["-p", prompt, "--permission-mode", "acceptEdits"],
+      args: ["-p", prompt, "--permission-mode", "acceptEdits", "--output-format", "stream-json", "--verbose"],
     }
+  }
+
+  function shortPath(p) {
+    if (!p) return ""
+    const m = String(p).match(/((?:app|components|lib|src|pages|context|hooks)\/.*)/)
+    return m ? m[1] : String(p).split("/").slice(-2).join("/")
+  }
+
+  // Turn one stream-json event into human-readable activity line(s).
+  function formatEvent(evt) {
+    const out = []
+    if (!evt || typeof evt !== "object") return out
+    if (evt.type === "assistant" && evt.message && Array.isArray(evt.message.content)) {
+      for (const b of evt.message.content) {
+        if (b.type === "text" && b.text && b.text.trim()) {
+          out.push(b.text.trim().replace(/\s+/g, " ").slice(0, 160))
+        } else if (b.type === "tool_use") {
+          const i = b.input || {}
+          const hint = i.file_path
+            ? shortPath(i.file_path)
+            : i.path
+            ? shortPath(i.path)
+            : i.pattern
+            ? String(i.pattern).slice(0, 60)
+            : i.command
+            ? String(i.command).slice(0, 60)
+            : ""
+          out.push("↳ " + (b.name || "tool") + (hint ? " " + hint : ""))
+        }
+      }
+    }
+    return out
   }
 
   function buildPrompt(notes) {
@@ -117,7 +149,16 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
 
     const prompt = buildPrompt(open)
     const { bin, args } = agentArgs(prompt)
-    lastRun = { running: true, startedAt: new Date().toISOString(), finishedAt: null, dispatched: ids.length, ok: null, log: "" }
+    lastRun = {
+      running: true,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      dispatched: ids.length,
+      ok: null,
+      activity: "starting…",
+      recent: [],
+      log: "",
+    }
 
     let child
     try {
@@ -125,25 +166,54 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       child = spawn(bin, args, { cwd: dir, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
     } catch (err) {
       await setStatus(ids, "open")
-      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, log: String(err) }
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, activity: "couldn't start", log: String(err) }
       return { error: "spawn_failed", detail: String(err) }
     }
 
-    let out = ""
-    child.stdout?.on("data", (d) => ((out += d), process.stdout.write(d)))
-    child.stderr?.on("data", (d) => ((out += d), process.stderr.write(d)))
+    // Parse newline-delimited stream-json → readable activity (terminal + widget).
+    let buf = ""
+    let errOut = ""
+    child.stdout?.on("data", (chunk) => {
+      buf += chunk.toString()
+      let nl
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl)
+        buf = buf.slice(nl + 1)
+        if (!line.trim()) continue
+        let evt
+        try {
+          evt = JSON.parse(line)
+        } catch {
+          continue
+        }
+        for (const msg of formatEvent(evt)) {
+          lastRun.activity = msg
+          lastRun.recent.push(msg)
+          if (lastRun.recent.length > 50) lastRun.recent.shift()
+          console.log("  " + msg)
+        }
+      }
+    })
+    child.stderr?.on("data", (d) => ((errOut += d), process.stderr.write(d)))
     child.on("error", async (err) => {
       await setStatus(ids, "open")
-      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, log: String(err) }
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, activity: "error", log: String(err) }
     })
     child.on("close", async (code) => {
       if (code === 0) await setStatus(ids, "done")
       else await setStatus(ids, "open") // failed → re-open so they show again
-      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: code === 0, log: out.slice(-4000) }
+      lastRun = {
+        ...lastRun,
+        running: false,
+        finishedAt: new Date().toISOString(),
+        ok: code === 0,
+        activity: code === 0 ? "done" : "finished with issues",
+        log: errOut.slice(-2000),
+      }
       console.log(`clickfix: agent finished (exit ${code}); ${ids.length} note(s) ${code === 0 ? "done" : "re-opened"}`)
     })
 
-    console.log(`clickfix: dispatched ${ids.length} note(s) to "${bin}"`)
+    console.log(`clickfix: dispatched ${ids.length} note(s) to "${bin}" — streaming progress below`)
     return { dispatched: ids.length }
   }
 
@@ -222,6 +292,8 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
           running: lastRun.running,
           dispatched: lastRun.dispatched,
           ok: lastRun.ok,
+          activity: lastRun.activity || null,
+          recent: lastRun.recent || [],
           startedAt: lastRun.startedAt,
           finishedAt: lastRun.finishedAt,
         })
