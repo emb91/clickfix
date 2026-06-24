@@ -141,7 +141,25 @@
     document.documentElement.appendChild(highlight)
     document.documentElement.appendChild(root)
     refreshCount()
+    resumeIfRunning()
     render()
+  }
+
+  // Reconnect the progress pill after a reload if the agent is still working.
+  function resumeIfRunning() {
+    fetch(ORIGIN + "/run")
+      .then(function (r) {
+        return r.ok ? r.json() : null
+      })
+      .then(function (s) {
+        if (s && s.running) {
+          state.working = true
+          state.activity = s.activity || "working…"
+          render()
+          pollRun()
+        }
+      })
+      .catch(function () {})
   }
 
   function refreshCount() {
