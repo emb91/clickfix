@@ -126,7 +126,22 @@
   }
 
   // ----------------------------------------------------------------------- UI
-  var state = { mode: "idle", captured: null, openCount: 0, toast: null, instruction: "", working: false, activity: "" }
+  var state = {
+    mode: "idle",
+    captured: null,
+    kind: "ui", // compose-panel choice: "ui" (visual tweak) | "behavior" (fix root cause)
+    uiCount: 0, // open notes by kind, for the per-mode work buttons
+    bugCount: 0,
+    toast: null,
+    instruction: "",
+    working: false,
+    activity: "",
+    // clarification loop
+    canReply: false, // a resumable agent session exists
+    agentMsg: "", // the agent's latest text (e.g. its diagnosis / question)
+    pendingIds: [], // behavior notes diagnosed and awaiting your approval
+    replyText: "",
+  }
 
   var root = document.createElement("div")
   root.setAttribute("data-clickfix", "")
@@ -137,27 +152,100 @@
   highlight.style.cssText =
     "position:fixed;display:none;z-index:" + (Z - 1) + ";pointer-events:none;border:2px solid #2dd4bf;background:rgba(45,212,191,0.12);border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,0.4);"
 
+  // -------------------------------------------------------------------- dragging
+  // The toolbar lives bottom-right by default; users can drag it anywhere by the
+  // ✦ Feedback button. Position persists per-origin in localStorage.
+  var POS_KEY = "__clickfix_pos"
+  var drag = null // { sx, sy, ox, oy, moved } while a drag is in progress
+  var suppressClick = false // true briefly after a drag, so the trailing click is ignored
+
+  function loadPos() {
+    try {
+      var p = JSON.parse(localStorage.getItem(POS_KEY))
+      if (p && typeof p.left === "number" && typeof p.top === "number") return p
+    } catch (e) {}
+    return null
+  }
+  function applyPos(p) {
+    if (!p) return
+    root.style.left = p.left + "px"
+    root.style.top = p.top + "px"
+    root.style.right = "auto"
+    root.style.bottom = "auto"
+  }
+  function clamp(v, max) {
+    return Math.max(0, Math.min(v, Math.max(0, max)))
+  }
+  function startDrag(e) {
+    if (e.button !== 0) return
+    var r = root.getBoundingClientRect()
+    drag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false }
+    document.addEventListener("mousemove", onDrag, true)
+    document.addEventListener("mouseup", endDrag, true)
+  }
+  function onDrag(e) {
+    if (!drag) return
+    var dx = e.clientX - drag.sx,
+      dy = e.clientY - drag.sy
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return // tolerate jitter so clicks still register
+    drag.moved = true
+    e.preventDefault()
+    var r = root.getBoundingClientRect()
+    applyPos({
+      left: clamp(drag.ox + dx, window.innerWidth - r.width),
+      top: clamp(drag.oy + dy, window.innerHeight - r.height),
+    })
+  }
+  function endDrag() {
+    document.removeEventListener("mousemove", onDrag, true)
+    document.removeEventListener("mouseup", endDrag, true)
+    if (drag && drag.moved) {
+      var r = root.getBoundingClientRect()
+      try {
+        localStorage.setItem(POS_KEY, JSON.stringify({ left: r.left, top: r.top }))
+      } catch (e) {}
+      suppressClick = true // swallow the click that fires right after mouseup
+      setTimeout(function () {
+        suppressClick = false
+      }, 0)
+    }
+    drag = null
+  }
+
   function mount() {
     document.documentElement.appendChild(highlight)
     document.documentElement.appendChild(root)
+    applyPos(loadPos())
     refreshCount()
     resumeIfRunning()
     render()
   }
 
-  // Reconnect the progress pill after a reload if the agent is still working.
+  // Pull conversation state (agent's last message, resumable session, pending
+  // behavior notes) out of a /run payload into local state.
+  function adoptRun(s) {
+    if (!s) return
+    state.canReply = !!s.canReply
+    state.agentMsg = s.lastMessage || ""
+    state.pendingIds = Array.isArray(s.pendingIds) ? s.pendingIds : []
+  }
+
+  // Reconnect after a reload: resume the progress pill if still working, and
+  // restore any in-progress conversation so you can keep replying.
   function resumeIfRunning() {
     fetch(ORIGIN + "/run")
       .then(function (r) {
         return r.ok ? r.json() : null
       })
       .then(function (s) {
-        if (s && s.running) {
+        if (!s) return
+        adoptRun(s)
+        if (s.running) {
           state.working = true
           state.activity = s.activity || "working…"
-          render()
           pollRun()
         }
+        render()
       })
       .catch(function () {})
   }
@@ -168,7 +256,11 @@
         return r.ok ? r.json() : { items: [] }
       })
       .then(function (d) {
-        state.openCount = Array.isArray(d.items) ? d.items.length : 0
+        var items = Array.isArray(d.items) ? d.items : []
+        state.bugCount = items.filter(function (e) {
+          return e.kind === "behavior"
+        }).length
+        state.uiCount = items.length - state.bugCount
         render()
       })
       .catch(function () {})
@@ -203,6 +295,7 @@
       component_chain: c.component_chain || null,
       selector: c.selector || null,
       text: c.text || null,
+      kind: state.kind,
       instruction: state.instruction,
     }
     fetch(ORIGIN + "/feedback", {
@@ -215,7 +308,7 @@
         state.instruction = ""
         state.captured = null
         state.mode = "idle"
-        toast("Sent")
+        toast(state.kind === "behavior" ? "Bug logged" : "Sent")
         refreshCount()
       })
       .catch(function () {
@@ -223,12 +316,16 @@
       })
   }
 
-  function runNow() {
+  function runNow(kind) {
     if (state.working) return
     state.working = true
     state.activity = "starting…"
     render()
-    fetch(ORIGIN + "/run", { method: "POST" })
+    fetch(ORIGIN + "/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: kind || "ui" }),
+    })
       .then(function (r) {
         return r.json().then(function (d) {
           return { ok: r.ok, d: d }
@@ -240,7 +337,7 @@
           toast((res.d && res.d.error) || "Couldn't start")
           return
         }
-        toast("Working on " + res.d.dispatched + " note(s)…")
+        toast((kind === "behavior" ? "Diagnosing " : "Working on ") + res.d.dispatched + " note(s)…")
         refreshCount()
         pollRun()
       })
@@ -248,6 +345,60 @@
         state.working = false
         toast("Couldn't reach agent")
       })
+  }
+
+  // Send a follow-up message into the agent's session (clarify / approve / redirect).
+  function sendReply() {
+    var txt = (state.replyText || "").trim()
+    if (!txt || state.working) return
+    state.working = true
+    state.activity = "thinking…"
+    state.replyText = ""
+    render()
+    fetch(ORIGIN + "/reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: txt }),
+    })
+      .then(function (r) {
+        return r.json().then(function (d) {
+          return { ok: r.ok, d: d }
+        })
+      })
+      .then(function (res) {
+        if (!res.ok) {
+          state.working = false
+          toast((res.d && res.d.error) || "Couldn't send reply")
+          return
+        }
+        toast("Sent to Claude…")
+        pollRun()
+      })
+      .catch(function () {
+        state.working = false
+        toast("Couldn't reach agent")
+      })
+  }
+
+  // Mark the notes in the current conversation resolved (you're happy with the fix).
+  function resolvePending() {
+    var ids = state.pendingIds || []
+    if (!ids.length) return
+    Promise.all(
+      ids.map(function (id) {
+        return fetch(ORIGIN + "/feedback", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: id, status: "done" }),
+        }).catch(function () {})
+      })
+    ).then(function () {
+      state.pendingIds = []
+      state.canReply = false
+      state.agentMsg = ""
+      toast("Resolved ✓")
+      refreshCount()
+    })
   }
 
   function pollRun() {
@@ -258,13 +409,15 @@
       .then(function (s) {
         if (s.running) {
           if (s.activity) state.activity = s.activity
+          if (s.lastMessage) state.agentMsg = s.lastMessage
           render()
           setTimeout(pollRun, 1200)
           return
         }
         state.working = false
         state.activity = ""
-        toast(s.ok === false ? "Agent finished with issues" : "Done ✓")
+        adoptRun(s)
+        toast(s.ok === false ? "Agent finished with issues" : s.kind === "behavior" ? "Diagnosis ready" : "Done ✓")
         refreshCount()
       })
       .catch(function () {
@@ -291,10 +444,21 @@
         : c.component_chain && c.component_chain.length > 1
         ? '<span style="color:#64748b">in ' + esc(c.component_chain.join(" › ")) + "</span>"
         : '<span style="color:#94a3b8">located by selector</span>'
+      var bug = state.kind === "behavior"
+      var seg = function (active) {
+        return (
+          "flex:1;border:none;border-radius:6px;padding:6px 8px;font-size:12px;font-weight:600;cursor:pointer;" +
+          (active ? "background:#2dd4bf;color:#04211d" : "background:transparent;color:#94a3b8")
+        )
+      }
       var panel = document.createElement("div")
       panel.style.cssText =
         "width:320px;background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);"
       panel.innerHTML =
+        '<div style="display:flex;gap:4px;margin-bottom:8px;background:#020617;border:1px solid #1e293b;border-radius:8px;padding:3px">' +
+        '<button data-pf="kind-ui" style="' + seg(!bug) + '">✦ UI tweak</button>' +
+        '<button data-pf="kind-bug" style="' + seg(bug) + '">🪲 Fix behaviour</button>' +
+        "</div>" +
         '<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.5">' +
         '<div><span style="color:#64748b">page </span>' +
         esc(location.pathname) +
@@ -305,13 +469,28 @@
         "</div>" +
         (c.text ? '<div style="color:#64748b;margin-top:2px">“' + esc(c.text) + "”</div>" : "") +
         "</div>" +
-        '<textarea data-pf="ta" rows="3" placeholder="What should change here?" style="width:100%;box-sizing:border-box;resize:vertical;background:#020617;color:#e7eaf0;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:13px;outline:none"></textarea>' +
+        (bug
+          ? '<div style="font-size:11px;color:#fbbf24;margin-bottom:8px;line-height:1.4">Claude will trace the root cause and propose a fix before changing anything — you approve in the reply box.</div>'
+          : "") +
+        '<textarea data-pf="ta" rows="3" placeholder="' +
+        (bug ? "What&#39;s wrong here? (e.g. this shows the wrong company&#39;s data)" : "What should change here?") +
+        '" style="width:100%;box-sizing:border-box;resize:vertical;background:#020617;color:#e7eaf0;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:13px;outline:none"></textarea>' +
         '<div style="display:flex;gap:8px;margin-top:8px">' +
-        '<button data-pf="send" style="flex:1;border:none;border-radius:8px;padding:8px 10px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d">Send (⌘↵)</button>' +
+        '<button data-pf="send" style="flex:1;border:none;border-radius:8px;padding:8px 10px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d">' +
+        (bug ? "Log bug (⌘↵)" : "Send (⌘↵)") +
+        "</button>" +
         '<button data-pf="repick" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">Re-pick</button>' +
         '<button data-pf="close" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">✕</button>' +
         "</div>"
       root.appendChild(panel)
+      var setKind = function (k) {
+        return function () {
+          state.kind = k
+          render()
+        }
+      }
+      panel.querySelector('[data-pf="kind-ui"]').addEventListener("click", setKind("ui"))
+      panel.querySelector('[data-pf="kind-bug"]').addEventListener("click", setKind("behavior"))
       var ta = panel.querySelector('[data-pf="ta"]')
       ta.value = state.instruction
       ta.addEventListener("input", function () {
@@ -334,8 +513,55 @@
       return
     }
 
+    // Conversation card: the agent's latest message + a box to reply/clarify.
+    // Shown whenever there's a live session to talk to (e.g. a pending diagnosis).
+    if (state.agentMsg || state.canReply) {
+      var chat = document.createElement("div")
+      chat.style.cssText =
+        "width:320px;margin-bottom:8px;background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);"
+      var head =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+        '<span style="font-size:11px;font-weight:600;color:#2dd4bf">✦ Claude</span>' +
+        '<button data-pf="chat-x" style="background:transparent;border:none;color:#64748b;cursor:pointer;font-size:13px;line-height:1">✕</button>' +
+        "</div>"
+      var msg = state.agentMsg
+        ? '<div style="font-size:12px;color:#cbd5e1;line-height:1.5;max-height:160px;overflow:auto;white-space:pre-wrap;margin-bottom:8px">' +
+          esc(state.agentMsg) +
+          "</div>"
+        : ""
+      var reply = state.working
+        ? ""
+        : '<textarea data-pf="reply" rows="2" placeholder="Reply to clarify or approve…" style="width:100%;box-sizing:border-box;resize:vertical;background:#020617;color:#e7eaf0;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:13px;outline:none"></textarea>' +
+          '<div style="display:flex;gap:8px;margin-top:8px">' +
+          '<button data-pf="reply-send" style="flex:1;border:none;border-radius:8px;padding:8px 10px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d">Reply (⌘↵)</button>' +
+          (state.pendingIds && state.pendingIds.length
+            ? '<button data-pf="reply-resolve" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">Resolve ✓</button>'
+            : "") +
+          "</div>"
+      chat.innerHTML = head + msg + reply
+      root.appendChild(chat)
+      chat.querySelector('[data-pf="chat-x"]').addEventListener("click", function () {
+        state.agentMsg = ""
+        state.canReply = false
+        render()
+      })
+      var rta = chat.querySelector('[data-pf="reply"]')
+      if (rta) {
+        rta.value = state.replyText
+        rta.addEventListener("input", function () {
+          state.replyText = rta.value
+        })
+        rta.addEventListener("keydown", function (e) {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendReply()
+        })
+        chat.querySelector('[data-pf="reply-send"]').addEventListener("click", sendReply)
+        var rrb = chat.querySelector('[data-pf="reply-resolve"]')
+        if (rrb) rrb.addEventListener("click", resolvePending)
+      }
+    }
+
     var row = document.createElement("div")
-    row.style.cssText = "display:flex;align-items:center;gap:8px"
+    row.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"
 
     if (state.working) {
       var pill = document.createElement("div")
@@ -349,22 +575,39 @@
             "</div>"
           : "")
       row.appendChild(pill)
-    } else if (state.openCount) {
-      var work = document.createElement("button")
-      work.style.cssText =
-        "border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d;border:1px solid #2dd4bf;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
-      work.textContent = "▶ Work " + state.openCount + " now"
-      work.addEventListener("click", runNow)
-      row.appendChild(work)
+    } else {
+      if (state.uiCount) {
+        var work = document.createElement("button")
+        work.style.cssText =
+          "border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d;border:1px solid #2dd4bf;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
+        work.textContent = "▶ Work " + state.uiCount + " UI"
+        work.addEventListener("click", function () {
+          runNow("ui")
+        })
+        row.appendChild(work)
+      }
+      if (state.bugCount) {
+        var fix = document.createElement("button")
+        fix.style.cssText =
+          "border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;background:#0b1220;color:#fbbf24;border:1px solid #fbbf24;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
+        fix.textContent = "🪲 Fix " + state.bugCount
+        fix.addEventListener("click", function () {
+          runNow("behavior")
+        })
+        row.appendChild(fix)
+      }
     }
 
     var btn = document.createElement("button")
     var picking = state.mode === "picking"
     btn.style.cssText =
-      "border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,0.4);" +
+      "border-radius:999px;padding:8px 14px;font-weight:600;cursor:grab;box-shadow:0 6px 24px rgba(0,0,0,0.4);touch-action:none;" +
       (picking ? "background:#2dd4bf;color:#04211d;border:1px solid #2dd4bf" : "background:#0b1220;color:#e7eaf0;border:1px solid #1e293b")
     btn.textContent = picking ? "Click an element… (Esc)" : "✦ Feedback"
+    btn.title = "Click to give feedback · drag to move"
+    btn.addEventListener("mousedown", startDrag)
     btn.addEventListener("click", function () {
+      if (suppressClick) return // this click ended a drag — don't toggle picking
       setMode(picking ? "idle" : "picking")
     })
     row.appendChild(btn)

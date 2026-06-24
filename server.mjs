@@ -77,16 +77,19 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   // "Work now" spawns ONE headless coding-agent process that works every open
   // note. Notes are marked in_progress on dispatch and done when the agent exits
   // cleanly (so the agent only needs to edit files — no callback permissions).
-  let lastRun = { running: false, startedAt: null, finishedAt: null, dispatched: 0, ok: null, log: "" }
+  // sessionId + lastMessage power the clarification loop: after a run we keep the
+  // agent's Claude Code session id so a follow-up reply can `--resume` it with full
+  // context, and its last text so the toolbar can show what it said / asked.
+  let lastRun = { running: false, startedAt: null, finishedAt: null, dispatched: 0, ok: null, log: "", sessionId: null, lastMessage: null }
 
-  function agentArgs(prompt) {
+  function agentArgs(prompt, resume) {
     // Bin overridable via CLICKFIX_AGENT_BIN. stream-json (requires --verbose) lets us
     // surface each step live to the terminal + widget instead of waiting for the end.
+    // resume (a session id) continues a prior conversation instead of starting fresh.
     const bin = process.env.CLICKFIX_AGENT_BIN || "claude"
-    return {
-      bin,
-      args: ["-p", prompt, "--permission-mode", "acceptEdits", "--output-format", "stream-json", "--verbose"],
-    }
+    const args = ["-p", prompt, "--permission-mode", "acceptEdits", "--output-format", "stream-json", "--verbose"]
+    if (resume) args.push("--resume", resume)
+    return { bin, args }
   }
 
   function shortPath(p) {
@@ -121,56 +124,53 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     return out
   }
 
-  function buildPrompt(notes) {
-    const lines = notes.map((n, i) => {
+  function noteLines(notes) {
+    return notes.map((n, i) => {
       const where = n.source_file
         ? `${n.source_file}${n.line ? ":" + n.line : ""}`
         : `component ${n.component || "?"}${n.component_chain ? " (" + n.component_chain.join(" › ") + ")" : ""}, selector ${n.selector || "?"}`
       return `${i + 1}. [${n.id}] route ${n.route || "?"} — ${where}\n   text: ${n.text || "(none)"}\n   DO: ${n.instruction}`
     })
+  }
+
+  // Two kinds of note get two mindsets, run in separate passes (never bundled):
+  //  • ui       — surgical visual edit at the clicked location.
+  //  • behavior — the clicked element is a SYMPTOM; trace upstream to the root
+  //               cause, then DIAGNOSE first (propose a fix, edit nothing) and
+  //               wait for the user to approve via a follow-up reply.
+  function buildPrompt(notes, kind) {
+    if (kind === "behavior") {
+      return [
+        `You are triaging a batch of BEHAVIOUR / bug reports left via the clickfix toolbar.`,
+        `Each note points at the place in the UI where a problem SHOWED UP, but the clicked element is usually just the symptom — not the cause (e.g. wrong data on screen, a nonsensical agent reply).`,
+        `For each note: treat the location/selector/text only as a starting point. Investigate the data flow and logic UPSTREAM — where the value is fetched, computed, prompted, or passed in — and find the ROOT CAUSE. Do NOT fix it by changing the UI to hide the symptom.`,
+        ``,
+        `IMPORTANT — this is a DIAGNOSIS pass. Do NOT edit any files yet. For each note, report:`,
+        `  - root cause (the file:line where the real problem lives)`,
+        `  - the specific fix you propose`,
+        `  - anything you're unsure about`,
+        `Then STOP. The user will reply to approve or redirect; only after that should you make changes.`,
+        ``,
+        `Notes:`,
+        ...noteLines(notes),
+      ].join("\n")
+    }
     return [
       `You are working a batch of UI feedback notes left in this project via the clickfix toolbar.`,
       `For each note: open the indicated source location (or locate it via component + selector + on-screen text), make the edit described in DO, keeping the surrounding code style. Edit files only; do not run servers or commit.`,
       `If a note is ambiguous or you cannot safely make the change, skip it and say why at the end.`,
       ``,
       `Notes:`,
-      ...lines,
+      ...noteLines(notes),
       ``,
       `When done, give a one-line summary per note id (done / skipped + reason).`,
     ].join("\n")
   }
 
-  async function runAgent() {
-    if (lastRun.running) return { error: "busy" }
-    const open = (await readAll()).filter((e) => e.status === "open")
-    if (!open.length) return { dispatched: 0 }
-    const ids = open.map((e) => e.id)
-    await setStatus(ids, "in_progress")
-
-    const prompt = buildPrompt(open)
-    const { bin, args } = agentArgs(prompt)
-    lastRun = {
-      running: true,
-      startedAt: new Date().toISOString(),
-      finishedAt: null,
-      dispatched: ids.length,
-      ok: null,
-      activity: "starting…",
-      recent: [],
-      log: "",
-    }
-
-    let child
-    try {
-      // stdin ignored so headless `claude` doesn't wait on a pipe for input.
-      child = spawn(bin, args, { cwd: dir, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
-    } catch (err) {
-      await setStatus(ids, "open")
-      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, activity: "couldn't start", log: String(err) }
-      return { error: "spawn_failed", detail: String(err) }
-    }
-
-    // Parse newline-delimited stream-json → readable activity (terminal + widget).
+  // Wire one child process's stream-json output → live activity, captured session
+  // id, and the agent's last text. ids/kind drive how note statuses settle on
+  // exit; a reply pass (ids null) leaves statuses alone.
+  function streamChild(child, ids, kind) {
     let buf = ""
     let errOut = ""
     child.stdout?.on("data", (chunk) => {
@@ -186,6 +186,12 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
         } catch {
           continue
         }
+        if (evt.session_id) lastRun.sessionId = evt.session_id // resume target for replies
+        if (evt.type === "assistant" && evt.message && Array.isArray(evt.message.content)) {
+          for (const b of evt.message.content) {
+            if (b.type === "text" && b.text && b.text.trim()) lastRun.lastMessage = b.text.trim()
+          }
+        }
         for (const msg of formatEvent(evt)) {
           lastRun.activity = msg
           lastRun.recent.push(msg)
@@ -196,25 +202,84 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     })
     child.stderr?.on("data", (d) => ((errOut += d), process.stderr.write(d)))
     child.on("error", async (err) => {
-      await setStatus(ids, "open")
+      if (ids) await setStatus(ids, "open")
       lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, activity: "error", log: String(err) }
     })
     child.on("close", async (code) => {
-      if (code === 0) await setStatus(ids, "done")
-      else await setStatus(ids, "open") // failed → re-open so they show again
+      if (ids) {
+        // ui: clean exit means the edit is done. behavior: the diagnosis pass is
+        // done but the fix isn't applied yet — keep notes in_progress (awaiting the
+        // user's approval) so they aren't marked resolved prematurely.
+        if (code !== 0) await setStatus(ids, "open")
+        else if (kind === "ui") await setStatus(ids, "done")
+      }
       lastRun = {
         ...lastRun,
         running: false,
         finishedAt: new Date().toISOString(),
         ok: code === 0,
-        activity: code === 0 ? "done" : "finished with issues",
+        activity: code === 0 ? (kind === "behavior" ? "diagnosed — awaiting your reply" : "done") : "finished with issues",
         log: errOut.slice(-2000),
       }
-      console.log(`clickfix: agent finished (exit ${code}); ${ids.length} note(s) ${code === 0 ? "done" : "re-opened"}`)
+      console.log(`clickfix: agent finished (exit ${code})${ids ? `; ${ids.length} ${kind} note(s)` : " (reply)"}`)
     })
+  }
 
-    console.log(`clickfix: dispatched ${ids.length} note(s) to "${bin}" — streaming progress below`)
+  async function runAgent(kind = "ui") {
+    if (lastRun.running) return { error: "busy" }
+    const open = (await readAll()).filter((e) => e.status === "open" && (e.kind || "ui") === kind)
+    if (!open.length) return { dispatched: 0 }
+    const ids = open.map((e) => e.id)
+    await setStatus(ids, "in_progress")
+
+    const { bin, args } = agentArgs(buildPrompt(open, kind))
+    lastRun = {
+      running: true,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      dispatched: ids.length,
+      ok: null,
+      activity: "starting…",
+      recent: [],
+      log: "",
+      sessionId: null, // a new batch starts a fresh conversation
+      lastMessage: null,
+      kind,
+      pendingIds: kind === "behavior" ? ids : [], // behavior notes await an approval reply
+    }
+
+    let child
+    try {
+      // stdin ignored so headless `claude` doesn't wait on a pipe for input.
+      child = spawn(bin, args, { cwd: dir, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
+    } catch (err) {
+      await setStatus(ids, "open")
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, activity: "couldn't start", log: String(err) }
+      return { error: "spawn_failed", detail: String(err) }
+    }
+    streamChild(child, ids, kind)
+    console.log(`clickfix: dispatched ${ids.length} ${kind} note(s) to "${bin}" — streaming progress below`)
     return { dispatched: ids.length }
+  }
+
+  // A follow-up message in the same conversation: resumes the captured session so
+  // the agent keeps full context ("yes, go ahead" / "no — the real issue is X").
+  async function runReply(text) {
+    if (lastRun.running) return { error: "busy" }
+    if (!lastRun.sessionId) return { error: "no_session" }
+    const { bin, args } = agentArgs(text, lastRun.sessionId)
+    lastRun = { ...lastRun, running: true, startedAt: new Date().toISOString(), finishedAt: null, ok: null, activity: "thinking…", recent: [], log: "", lastMessage: null }
+
+    let child
+    try {
+      child = spawn(bin, args, { cwd: dir, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
+    } catch (err) {
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, activity: "couldn't start", log: String(err) }
+      return { error: "spawn_failed", detail: String(err) }
+    }
+    streamChild(child, null, lastRun.kind)
+    console.log(`clickfix: reply dispatched to "${bin}" (resume ${String(lastRun.sessionId).slice(0, 8)}…)`)
+    return { ok: true }
   }
 
   const server = http.createServer(async (req, res) => {
@@ -262,6 +327,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
             : null,
           selector: typeof body.selector === "string" ? body.selector : null,
           text: typeof body.text === "string" ? body.text.slice(0, 280) : null,
+          kind: body.kind === "behavior" ? "behavior" : "ui",
           instruction: body.instruction.trim(),
         }
         await fs.appendFile(FILE, JSON.stringify(entry) + "\n", "utf8")
@@ -282,7 +348,9 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
 
     if (url.pathname === "/run") {
       if (req.method === "POST") {
-        const result = await runAgent()
+        const body = await readBody(req)
+        const kind = body && body.kind === "behavior" ? "behavior" : "ui"
+        const result = await runAgent(kind)
         if (result.error === "busy") return json(res, 409, { error: "agent is already working" })
         if (result.error) return json(res, 500, result)
         return json(res, 200, { ok: true, dispatched: result.dispatched })
@@ -296,8 +364,26 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
           recent: lastRun.recent || [],
           startedAt: lastRun.startedAt,
           finishedAt: lastRun.finishedAt,
+          // clarification loop
+          kind: lastRun.kind || null,
+          canReply: !!lastRun.sessionId,
+          lastMessage: lastRun.lastMessage || null,
+          pendingIds: lastRun.pendingIds || [],
         })
       }
+    }
+
+    // Follow-up message that resumes the agent's session (clarify / approve / redirect).
+    if (url.pathname === "/reply" && req.method === "POST") {
+      const body = await readBody(req)
+      if (!body || typeof body.text !== "string" || !body.text.trim()) {
+        return json(res, 400, { error: "text is required" })
+      }
+      const result = await runReply(body.text.trim())
+      if (result.error === "busy") return json(res, 409, { error: "agent is already working" })
+      if (result.error === "no_session") return json(res, 409, { error: "no conversation to reply to yet" })
+      if (result.error) return json(res, 500, result)
+      return json(res, 200, { ok: true })
     }
 
     if (url.pathname === "/") {

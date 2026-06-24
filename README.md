@@ -97,6 +97,7 @@ Every note is one JSON line:
   "source_file": "app/today/page.tsx", "line": 1254, "column": 12,
   "selector": "ul.bt-sig-list > li:nth-of-type(1) > button.bt-sig-row",
   "text": "This FDA source lists ALKEM LABS LTD…",
+  "kind": "ui",
   "instruction": "wrap this so it doesn't truncate"
 }
 ```
@@ -115,14 +116,46 @@ frames point at compiled chunks, so only the component name survives. For litera
 selector + text already pin down the code in one grep, so the line is a bonus, not
 a requirement.
 
-## Make the agent work immediately (the "Work now" button)
+## Two kinds of feedback: UI tweak vs Fix behaviour
 
-The toolbar shows a **▶ Work N now** button whenever there are open notes. Click it
-and the sidecar spawns **one headless Claude Code session** that works through every
-open note, edits the files, and exits. Notes are marked `in_progress` on dispatch and
-`done` when the agent exits cleanly (re-opened if it fails) — so the agent only needs
-to edit files, no callbacks. While it runs you see **⟳ Claude is working…**; when it
-finishes, your dev server hot-reloads with the changes.
+When you compose a note, a toggle picks how the agent should treat it:
+
+- **✦ UI tweak** (default) — a surgical visual edit at the clicked location. The clicked
+  element *is* the edit target.
+- **🪲 Fix behaviour** — for when the symptom you clicked (wrong data, a daft agent reply)
+  has its cause somewhere upstream. The agent treats the clicked element only as a
+  starting point, traces the data/logic to the **root cause**, and is told *not* to paper
+  over it by editing the UI.
+
+The two kinds never get bundled into one prompt — they run as separate passes with
+separate mindsets, so a CSS tweak is never conflated with a logic fix.
+
+## Make the agent work immediately (the "Work" buttons)
+
+The toolbar shows **▶ Work N UI** and/or **🪲 Fix N** whenever there are open notes of
+each kind. Click one and the sidecar spawns **one headless Claude Code session** for
+that kind.
+
+- **UI** notes are edited and marked `done` when the agent exits cleanly (re-opened if
+  it fails) — no callbacks, the agent only edits files.
+- **Behaviour** notes get a **diagnose-first** pass: the agent investigates, reports the
+  root cause + proposed fix, and **changes nothing yet**. The notes stay `in_progress`
+  and its diagnosis appears in a **✦ Claude** card in the toolbar.
+
+While it runs you see **⟳ Claude is working…**; when it finishes, your dev server
+hot-reloads with any changes.
+
+### Replying / clarifying (the chat loop)
+
+Because the agent runs headless, the terminal is read-only — so when it asks a question
+or proposes a fix, you answer in the toolbar's reply box. Sending a reply **resumes the
+same Claude Code session** (`--resume`), so it keeps full context:
+
+> *"yes, go ahead"* &nbsp;·&nbsp; *"no — the real issue is the API filter, fix that"*
+
+This is the loop for behaviour fixes: **Fix N → read the diagnosis → reply to approve or
+redirect → it applies the fix → Resolve ✓** (marks the notes done). It also works any
+time the agent says *"I'm not sure what you meant"* — just reply and it continues.
 
 Under the hood it runs:
 
@@ -164,11 +197,12 @@ When I say "check feedback", read `.feedback/inbox.jsonl`. For each note with
 ## API
 
 - `GET /toolbar.js` — the injected toolbar
-- `POST /feedback` — append a note (`{ instruction, route, source_file, line, component, component_chain, selector, text }`)
+- `POST /feedback` — append a note (`{ instruction, kind, route, source_file, line, component, component_chain, selector, text }`); `kind` is `"ui"` (default) or `"behavior"`
 - `GET /feedback?status=open` — list notes
 - `PATCH /feedback` — `{ id, status: "open" | "done" }`
-- `POST /run` — dispatch one agent over all open notes (→ `{ dispatched }`, or `409` if already running)
-- `GET /run` — agent run status (`{ running, dispatched, ok, startedAt, finishedAt }`)
+- `POST /run` — dispatch one agent over open notes of one kind (`{ kind }`, default `"ui"`) → `{ dispatched }`, or `409` if already running
+- `POST /reply` — `{ text }` — resume the current agent session with a follow-up message (clarify / approve / redirect)
+- `GET /run` — run status + conversation (`{ running, dispatched, ok, activity, kind, canReply, lastMessage, pendingIds, startedAt, finishedAt }`)
 
 ## Notes
 
