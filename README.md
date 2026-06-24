@@ -34,6 +34,43 @@ type what should change → **Send**. Notes append to `.feedback/inbox.jsonl`.
 
 Options: `npx clickfix --port 7331 --dir .`
 
+## Where the script goes
+
+clickfix can't inject itself — your app has to load the script. Put it in
+**whatever file renders on every page** (your global layout / template), inside
+`<body>`, so the toolbar shows on every route. Then it's the same one line
+everywhere — **always gate it to development** so it never ships to production.
+
+| Stack | File | Where |
+|-------|------|-------|
+| Next.js App Router | `app/layout.tsx` | in `<body>` |
+| Next.js Pages Router | `pages/_app.tsx` or `pages/_document.tsx` | in the document body |
+| Vite / CRA / plain HTML | `index.html` | just before `</body>` |
+| Astro | base layout `.astro` | in `<body>` |
+| Remix | `app/root.tsx` | in `<body>` |
+| Rails / Django / etc. | base template (`application.html.erb`, `base.html`) | before `</body>` |
+
+**Next.js (App Router)** — dev-gated, so production builds tree-shake it out:
+
+```tsx
+// app/layout.tsx, inside <body>
+{process.env.NODE_ENV !== "production" && (
+  // eslint-disable-next-line @next/next/no-sync-scripts
+  <script src="http://localhost:7331/toolbar.js" async />
+)}
+```
+
+**Plain HTML** — only add the tag to your local/dev build:
+
+```html
+<!-- before </body> -->
+<script src="http://localhost:7331/toolbar.js" async></script>
+```
+
+The toolbar derives the sidecar address from its own `src`, so if you run
+clickfix on a different `--port` for another project, just change the port in
+that project's script tag to match.
+
 ## What gets captured
 
 Every note is one JSON line:
