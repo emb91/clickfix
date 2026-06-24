@@ -1,6 +1,6 @@
 {
   "name": "clickfix",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Click an element on your running site, type an edit, and your AI coding agent gets the exact page, component, source line, and instruction — no screenshots.",
   "type": "module",
   "bin": {

@@ -120,15 +120,16 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     return gitRepo
   }
   async function modifiedPaths() {
-    const r = await git(["status", "--porcelain"])
-    if (r.code !== 0) return new Set()
-    // porcelain lines are "XY <path>"; rename shows "orig -> new" so take the tail.
-    return new Set(
-      r.out
-        .split("\n")
-        .filter(Boolean)
-        .map((l) => l.slice(3).replace(/^.* -> /, ""))
-    )
+    // Use plumbing that emits bare, NUL-separated, repo-root-relative paths — no
+    // status prefixes to mis-slice (staged "M " vs unstaged " M" differ by a char)
+    // and no quoting of odd filenames. Covers staged + unstaged tracked changes...
+    const set = new Set()
+    const tracked = await git(["diff", "--name-only", "-z", "HEAD"])
+    if (tracked.code === 0) for (const p of tracked.out.split("\0").filter(Boolean)) set.add(p)
+    // ...plus brand-new untracked files the agent may have created.
+    const untracked = await git(["ls-files", "--others", "--exclude-standard", "-z"])
+    if (untracked.code === 0) for (const p of untracked.out.split("\0").filter(Boolean)) set.add(p)
+    return set
   }
   async function gitSnapshot() {
     if (!GIT_ENABLED || !(await isGitRepo())) return new Set()
