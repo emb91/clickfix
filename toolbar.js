@@ -141,6 +141,8 @@
     agentMsg: "", // the agent's latest text (e.g. its diagnosis / question)
     pendingIds: [], // behavior notes diagnosed and awaiting your approval
     replyText: "",
+    prUrl: "", // the PR this conversation's edits were boxed into
+    branch: "", // its git branch
   }
 
   var root = document.createElement("div")
@@ -228,6 +230,8 @@
     state.canReply = !!s.canReply
     state.agentMsg = s.lastMessage || ""
     state.pendingIds = Array.isArray(s.pendingIds) ? s.pendingIds : []
+    state.prUrl = s.prUrl || ""
+    state.branch = s.branch || ""
   }
 
   // Reconnect after a reload: resume the progress pill if still working, and
@@ -396,6 +400,8 @@
       state.pendingIds = []
       state.canReply = false
       state.agentMsg = ""
+      state.prUrl = ""
+      state.branch = ""
       toast("Resolved ✓")
       refreshCount()
     })
@@ -529,6 +535,15 @@
           esc(state.agentMsg) +
           "</div>"
         : ""
+      var pr = state.prUrl
+        ? '<a href="' +
+          esc(state.prUrl) +
+          '" target="_blank" rel="noopener" style="display:block;font-size:11px;color:#2dd4bf;text-decoration:none;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⎇ ' +
+          esc(state.branch || "PR") +
+          " → open PR ↗</a>"
+        : state.branch
+        ? '<div style="font-size:11px;color:#64748b;margin-bottom:8px">⎇ committed to ' + esc(state.branch) + "</div>"
+        : ""
       var reply = state.working
         ? ""
         : '<textarea data-pf="reply" rows="2" placeholder="Reply to clarify or approve…" style="width:100%;box-sizing:border-box;resize:vertical;background:#020617;color:#e7eaf0;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:13px;outline:none"></textarea>' +
@@ -538,7 +553,7 @@
             ? '<button data-pf="reply-resolve" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">Resolve ✓</button>'
             : "") +
           "</div>"
-      chat.innerHTML = head + msg + reply
+      chat.innerHTML = head + msg + pr + reply
       root.appendChild(chat)
       chat.querySelector('[data-pf="chat-x"]').addEventListener("click", function () {
         state.agentMsg = ""

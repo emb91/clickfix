@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { randomUUID } from "node:crypto"
-import { spawn } from "node:child_process"
+import { spawn, execFile } from "node:child_process"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -91,6 +91,143 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     if (resume) args.push("--resume", resume)
     return { bin, args }
   }
+
+  // --- git "boxing" -------------------------------------------------------
+  // Each conversation's edits get isolated onto their own clickfix/* branch and
+  // opened as a PR, so the agent's work is a reviewable unit instead of loose
+  // changes mixed into your working tree. We commit ONLY the files that changed
+  // during the run (diff of `git status` before/after), leaving your own
+  // uncommitted work alone. Modes via CLICKFIX_GIT: "pr" (default, branch+commit
+  // +push+PR), "commit" (branch+commit only), "0"/"off" (disabled).
+  const gitMode = (process.env.CLICKFIX_GIT || "pr").toLowerCase()
+  const GIT_ENABLED = !["0", "off", "false", "no"].includes(gitMode)
+  const AUTO_PUSH = GIT_ENABLED && !["commit", "local"].includes(gitMode)
+  let gitRepo = null // cached: is `dir` inside a git work tree?
+
+  function run(cmd, args) {
+    return new Promise((resolve) => {
+      execFile(cmd, args, { cwd: dir, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) =>
+        resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, out: (stdout || "").trim(), err: (stderr || "").trim() })
+      )
+    })
+  }
+  const git = (args) => run("git", args)
+
+  async function isGitRepo() {
+    if (gitRepo !== null) return gitRepo
+    const r = await git(["rev-parse", "--is-inside-work-tree"])
+    gitRepo = r.code === 0 && r.out === "true"
+    return gitRepo
+  }
+  async function modifiedPaths() {
+    const r = await git(["status", "--porcelain"])
+    if (r.code !== 0) return new Set()
+    // porcelain lines are "XY <path>"; rename shows "orig -> new" so take the tail.
+    return new Set(
+      r.out
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => l.slice(3).replace(/^.* -> /, ""))
+    )
+  }
+  async function gitSnapshot() {
+    if (!GIT_ENABLED || !(await isGitRepo())) return new Set()
+    return modifiedPaths()
+  }
+  async function branchOnRemote(b) {
+    const r = await git(["ls-remote", "--heads", "origin", b])
+    return r.code === 0 && r.out.length > 0
+  }
+  function ghAvailable() {
+    return new Promise((resolve) => execFile("gh", ["--version"], { cwd: dir }, (e) => resolve(!e)))
+  }
+  function stamp() {
+    const d = new Date()
+    const p = (n) => String(n).padStart(2, "0")
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+  }
+  function truncate(s, n) {
+    s = String(s || "")
+    return s.length > n ? s.slice(0, n - 1) + "…" : s
+  }
+  function commitMessage(notes, kind) {
+    const head = kind === "behavior" ? "clickfix: fix behaviour" : "clickfix: UI changes"
+    const lines = notes.map((n) => `- ${n.instruction}${n.route ? ` (${n.route})` : ""}`)
+    return [head, "", ...lines, "", "Made via the clickfix feedback toolbar."].join("\n")
+  }
+  function prText(notes, kind) {
+    const route = (notes[0] && notes[0].route) || ""
+    const verb = kind === "behavior" ? "fix" : "tweak"
+    const title =
+      notes.length === 1
+        ? `clickfix: ${truncate(notes[0].instruction, 60)}`
+        : `clickfix: ${notes.length} ${verb}${notes.length > 1 ? "s" : ""}${route ? ` on ${route}` : ""}`
+    const rows = notes.map((n) => {
+      const where = n.source_file ? `\`${n.source_file}${n.line ? ":" + n.line : ""}\`` : n.selector ? `\`${n.selector}\`` : ""
+      return `- ${n.instruction}${where ? ` — ${where}` : ""}${n.route ? ` _(at ${n.route})_` : ""}`
+    })
+    const body = [
+      `Changes captured via the **clickfix** feedback toolbar (${kind === "behavior" ? "behaviour fix" : "UI"}).`,
+      "",
+      ...rows,
+      "",
+      "🤖 Generated with clickfix",
+    ].join("\n")
+    return { title, body }
+  }
+
+  // Commit (and optionally push + PR) the agent's edits from the just-finished run.
+  // Returns { prUrl?, message? } and updates the conversation's git state on lastRun.
+  async function boxUp(kind) {
+    if (!GIT_ENABLED || !(await isGitRepo())) return {}
+    const before = lastRun.beforePaths || new Set()
+    const after = await modifiedPaths()
+    const changed = [...after].filter((p) => !before.has(p))
+    if (!changed.length) return {} // nothing new (e.g. a diagnosis-only pass)
+
+    const notes = lastRun.notes || []
+    // Lazily create the conversation's branch the first time there's something to
+    // commit — `switch -c` carries the uncommitted edits onto the new branch.
+    if (!lastRun.gitBranch) {
+      const baseRef = await git(["rev-parse", "--abbrev-ref", "HEAD"])
+      lastRun.gitBase = baseRef.code === 0 && baseRef.out !== "HEAD" ? baseRef.out : null
+      const suffix = (notes[0] && notes[0].id ? notes[0].id : "").slice(0, 4)
+      const branch = `clickfix/${kind === "behavior" ? "fix" : "ui"}-${stamp()}${suffix ? "-" + suffix : ""}`
+      const sw = await git(["switch", "-c", branch])
+      if (sw.code !== 0) return { message: "couldn't create branch: " + (sw.err || sw.out) }
+      lastRun.gitBranch = branch
+      console.log(`clickfix: branched ${branch} off ${lastRun.gitBase || "HEAD"}`)
+    }
+
+    const add = await git(["add", "--", ...changed])
+    if (add.code !== 0) return { message: "git add failed: " + add.err }
+    const commit = await git(["commit", "-m", commitMessage(notes, kind), "--", ...changed])
+    if (commit.code !== 0) return { message: "git commit failed: " + (commit.err || commit.out) }
+    console.log(`clickfix: committed ${changed.length} file(s) to ${lastRun.gitBranch}`)
+    if (!AUTO_PUSH) return { message: `committed to ${lastRun.gitBranch}` }
+
+    const r = await git(["remote"])
+    const hasRemote = r.code === 0 && r.out.length > 0
+    if (!hasRemote || !(await ghAvailable())) {
+      return { message: `committed to ${lastRun.gitBranch} (no remote/gh — PR skipped)` }
+    }
+    const push = await git(["push", "-u", "origin", lastRun.gitBranch])
+    if (push.code !== 0) return { message: "git push failed: " + push.err }
+    if (lastRun.prUrl) {
+      console.log(`clickfix: pushed to existing PR ${lastRun.prUrl}`)
+      return { prUrl: lastRun.prUrl, message: `updated PR ${lastRun.prUrl}` }
+    }
+    const { title, body } = prText(notes, kind)
+    const prArgs = ["pr", "create", "--title", title, "--body", body]
+    if (lastRun.gitBase && (await branchOnRemote(lastRun.gitBase))) prArgs.push("--base", lastRun.gitBase)
+    const pr = await gh(prArgs)
+    if (pr.code !== 0) return { message: "gh pr create failed: " + (pr.err || pr.out) }
+    const url = (pr.out.match(/https?:\/\/\S+/) || [])[0] || pr.out
+    lastRun.prUrl = url
+    console.log(`clickfix: opened PR ${url}`)
+    return { prUrl: url, message: `opened PR ${url}` }
+  }
+  const gh = (args) => run("gh", args)
 
   function shortPath(p) {
     if (!p) return ""
@@ -213,6 +350,17 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
         if (code !== 0) await setStatus(ids, "open")
         else if (kind === "ui") await setStatus(ids, "done")
       }
+      // Box up any edits this run produced onto the conversation's branch / PR.
+      let gitMsg = ""
+      if (code === 0) {
+        try {
+          const r = await boxUp(kind)
+          gitMsg = r.message || ""
+        } catch (e) {
+          gitMsg = "git step failed: " + e
+          console.log("clickfix: " + gitMsg)
+        }
+      }
       lastRun = {
         ...lastRun,
         running: false,
@@ -220,8 +368,9 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
         ok: code === 0,
         activity: code === 0 ? (kind === "behavior" ? "diagnosed — awaiting your reply" : "done") : "finished with issues",
         log: errOut.slice(-2000),
+        gitMessage: gitMsg || lastRun.gitMessage || null,
       }
-      console.log(`clickfix: agent finished (exit ${code})${ids ? `; ${ids.length} ${kind} note(s)` : " (reply)"}`)
+      console.log(`clickfix: agent finished (exit ${code})${ids ? `; ${ids.length} ${kind} note(s)` : " (reply)"}${gitMsg ? " — " + gitMsg : ""}`)
     })
   }
 
@@ -233,6 +382,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     await setStatus(ids, "in_progress")
 
     const { bin, args } = agentArgs(buildPrompt(open, kind))
+    const before = await gitSnapshot() // files already dirty — excluded from the commit
     lastRun = {
       running: true,
       startedAt: new Date().toISOString(),
@@ -246,6 +396,13 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       lastMessage: null,
       kind,
       pendingIds: kind === "behavior" ? ids : [], // behavior notes await an approval reply
+      // git "boxing" state — fresh per conversation
+      notes: open,
+      beforePaths: before,
+      gitBranch: null,
+      gitBase: null,
+      prUrl: null,
+      gitMessage: null,
     }
 
     let child
@@ -268,7 +425,8 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     if (lastRun.running) return { error: "busy" }
     if (!lastRun.sessionId) return { error: "no_session" }
     const { bin, args } = agentArgs(text, lastRun.sessionId)
-    lastRun = { ...lastRun, running: true, startedAt: new Date().toISOString(), finishedAt: null, ok: null, activity: "thinking…", recent: [], log: "", lastMessage: null }
+    const before = await gitSnapshot() // re-snapshot so this turn's fix is what gets committed
+    lastRun = { ...lastRun, running: true, startedAt: new Date().toISOString(), finishedAt: null, ok: null, activity: "thinking…", recent: [], log: "", lastMessage: null, beforePaths: before }
 
     let child
     try {
@@ -369,6 +527,10 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
           canReply: !!lastRun.sessionId,
           lastMessage: lastRun.lastMessage || null,
           pendingIds: lastRun.pendingIds || [],
+          // git boxing
+          branch: lastRun.gitBranch || null,
+          prUrl: lastRun.prUrl || null,
+          gitMessage: lastRun.gitMessage || null,
         })
       }
     }
@@ -398,6 +560,18 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   await new Promise((resolve) => server.listen(port, resolve))
   console.log(`clickfix  →  http://localhost:${port}`)
   console.log(`  mailbox: ${FILE}`)
+  if (GIT_ENABLED) {
+    const top = await git(["rev-parse", "--show-toplevel"])
+    const target = top.code === 0 ? top.out : null
+    if (target) {
+      console.log(`  git: ${AUTO_PUSH ? "branch + commit + PR" : "branch + commit (no push)"} per conversation`)
+      console.log(`  git target repo: ${target}`) // commits land HERE — the project you're editing, never clickfix
+    } else {
+      console.log(`  git: enabled but ${dir} is not a git repo — will no-op`)
+    }
+  } else {
+    console.log(`  git: disabled (CLICKFIX_GIT=${gitMode})`)
+  }
   console.log(`  add to your site (dev only):`)
   console.log(`    <script src="http://localhost:${port}/toolbar.js"></script>`)
   return server
