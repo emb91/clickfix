@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { randomUUID } from "node:crypto"
+import { spawn } from "node:child_process"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -60,6 +61,89 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
         }
       })
       .filter(Boolean)
+  }
+
+  async function writeAll(items) {
+    await fs.writeFile(FILE, items.map((e) => JSON.stringify(e)).join("\n") + (items.length ? "\n" : ""), "utf8")
+  }
+
+  async function setStatus(ids, status) {
+    const set = new Set(ids)
+    const items = await readAll()
+    await writeAll(items.map((e) => (set.has(e.id) ? { ...e, status } : e)))
+  }
+
+  // --- agent runner --------------------------------------------------------
+  // "Work now" spawns ONE headless coding-agent process that works every open
+  // note. Notes are marked in_progress on dispatch and done when the agent exits
+  // cleanly (so the agent only needs to edit files — no callback permissions).
+  let lastRun = { running: false, startedAt: null, finishedAt: null, dispatched: 0, ok: null, log: "" }
+
+  function agentArgs(prompt) {
+    // Override the whole command with PAGE_FEEDBACK_RUN_CMD (placeholders: {prompt} {port}),
+    // else default to Claude Code headless. Bin overridable via PAGE_FEEDBACK_AGENT_BIN.
+    const bin = process.env.PAGE_FEEDBACK_AGENT_BIN || "claude"
+    return {
+      bin,
+      args: ["-p", prompt, "--permission-mode", "acceptEdits"],
+    }
+  }
+
+  function buildPrompt(notes) {
+    const lines = notes.map((n, i) => {
+      const where = n.source_file
+        ? `${n.source_file}${n.line ? ":" + n.line : ""}`
+        : `component ${n.component || "?"}${n.component_chain ? " (" + n.component_chain.join(" › ") + ")" : ""}, selector ${n.selector || "?"}`
+      return `${i + 1}. [${n.id}] route ${n.route || "?"} — ${where}\n   text: ${n.text || "(none)"}\n   DO: ${n.instruction}`
+    })
+    return [
+      `You are working a batch of UI feedback notes left in this project via the page-feedback toolbar.`,
+      `For each note: open the indicated source location (or locate it via component + selector + on-screen text), make the edit described in DO, keeping the surrounding code style. Edit files only; do not run servers or commit.`,
+      `If a note is ambiguous or you cannot safely make the change, skip it and say why at the end.`,
+      ``,
+      `Notes:`,
+      ...lines,
+      ``,
+      `When done, give a one-line summary per note id (done / skipped + reason).`,
+    ].join("\n")
+  }
+
+  async function runAgent() {
+    if (lastRun.running) return { error: "busy" }
+    const open = (await readAll()).filter((e) => e.status === "open")
+    if (!open.length) return { dispatched: 0 }
+    const ids = open.map((e) => e.id)
+    await setStatus(ids, "in_progress")
+
+    const prompt = buildPrompt(open)
+    const { bin, args } = agentArgs(prompt)
+    lastRun = { running: true, startedAt: new Date().toISOString(), finishedAt: null, dispatched: ids.length, ok: null, log: "" }
+
+    let child
+    try {
+      child = spawn(bin, args, { cwd: dir, env: process.env })
+    } catch (err) {
+      await setStatus(ids, "open")
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, log: String(err) }
+      return { error: "spawn_failed", detail: String(err) }
+    }
+
+    let out = ""
+    child.stdout?.on("data", (d) => ((out += d), process.stdout.write(d)))
+    child.stderr?.on("data", (d) => ((out += d), process.stderr.write(d)))
+    child.on("error", async (err) => {
+      await setStatus(ids, "open")
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, log: String(err) }
+    })
+    child.on("close", async (code) => {
+      if (code === 0) await setStatus(ids, "done")
+      else await setStatus(ids, "open") // failed → re-open so they show again
+      lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: code === 0, log: out.slice(-4000) }
+      console.log(`page-feedback: agent finished (exit ${code}); ${ids.length} note(s) ${code === 0 ? "done" : "re-opened"}`)
+    })
+
+    console.log(`page-feedback: dispatched ${ids.length} note(s) to "${bin}"`)
+    return { dispatched: ids.length }
   }
 
   const server = http.createServer(async (req, res) => {
@@ -122,6 +206,24 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
         if (!found) return json(res, 404, { error: "not found" })
         await fs.writeFile(FILE, updated.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8")
         return json(res, 200, { ok: true })
+      }
+    }
+
+    if (url.pathname === "/run") {
+      if (req.method === "POST") {
+        const result = await runAgent()
+        if (result.error === "busy") return json(res, 409, { error: "agent is already working" })
+        if (result.error) return json(res, 500, result)
+        return json(res, 200, { ok: true, dispatched: result.dispatched })
+      }
+      if (req.method === "GET") {
+        return json(res, 200, {
+          running: lastRun.running,
+          dispatched: lastRun.dispatched,
+          ok: lastRun.ok,
+          startedAt: lastRun.startedAt,
+          finishedAt: lastRun.finishedAt,
+        })
       }
     }
 

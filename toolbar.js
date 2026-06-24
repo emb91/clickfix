@@ -126,7 +126,7 @@
   }
 
   // ----------------------------------------------------------------------- UI
-  var state = { mode: "idle", captured: null, openCount: 0, toast: null, instruction: "" }
+  var state = { mode: "idle", captured: null, openCount: 0, toast: null, instruction: "", working: false }
 
   var root = document.createElement("div")
   root.setAttribute("data-page-feedback", "")
@@ -205,6 +205,52 @@
       })
   }
 
+  function runNow() {
+    if (state.working) return
+    state.working = true
+    render()
+    fetch(ORIGIN + "/run", { method: "POST" })
+      .then(function (r) {
+        return r.json().then(function (d) {
+          return { ok: r.ok, d: d }
+        })
+      })
+      .then(function (res) {
+        if (!res.ok) {
+          state.working = false
+          toast((res.d && res.d.error) || "Couldn't start")
+          return
+        }
+        toast("Working on " + res.d.dispatched + " note(s)…")
+        refreshCount()
+        pollRun()
+      })
+      .catch(function () {
+        state.working = false
+        toast("Couldn't reach agent")
+      })
+  }
+
+  function pollRun() {
+    fetch(ORIGIN + "/run")
+      .then(function (r) {
+        return r.json()
+      })
+      .then(function (s) {
+        if (s.running) {
+          setTimeout(pollRun, 1500)
+          return
+        }
+        state.working = false
+        toast(s.ok === false ? "Agent finished with issues" : "Done ✓")
+        refreshCount()
+      })
+      .catch(function () {
+        state.working = false
+        refreshCount()
+      })
+  }
+
   function render() {
     root.innerHTML = ""
 
@@ -268,14 +314,22 @@
 
     var row = document.createElement("div")
     row.style.cssText = "display:flex;align-items:center;gap:8px"
-    if (state.openCount) {
-      var badge = document.createElement("span")
-      badge.title = state.openCount + " open note(s) waiting"
-      badge.style.cssText =
-        "background:#0b1220;border:1px solid #1e293b;border-radius:999px;padding:4px 9px;font-size:11px;color:#94a3b8"
-      badge.textContent = state.openCount + " open"
-      row.appendChild(badge)
+
+    if (state.working) {
+      var pill = document.createElement("span")
+      pill.style.cssText =
+        "background:#0b1220;border:1px solid #2dd4bf;border-radius:999px;padding:6px 12px;font-size:12px;color:#2dd4bf"
+      pill.textContent = "⟳ Claude is working…"
+      row.appendChild(pill)
+    } else if (state.openCount) {
+      var work = document.createElement("button")
+      work.style.cssText =
+        "border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d;border:1px solid #2dd4bf;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
+      work.textContent = "▶ Work " + state.openCount + " now"
+      work.addEventListener("click", runNow)
+      row.appendChild(work)
     }
+
     var btn = document.createElement("button")
     var picking = state.mode === "picking"
     btn.style.cssText =

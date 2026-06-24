@@ -64,10 +64,30 @@ frames point at compiled chunks, so only the component name survives. For litera
 selector + text already pin down the code in one grep, so the line is a bonus, not
 a requirement.
 
-## Letting your agent consume it
+## Make the agent work immediately (the "Work now" button)
 
-The mailbox is just a file — point any agent at it. For Claude Code, drop this
-into the consuming project's `CLAUDE.md`:
+The toolbar shows a **▶ Work N now** button whenever there are open notes. Click it
+and the sidecar spawns **one headless Claude Code session** that works through every
+open note, edits the files, and exits. Notes are marked `in_progress` on dispatch and
+`done` when the agent exits cleanly (re-opened if it fails) — so the agent only needs
+to edit files, no callbacks. While it runs you see **⟳ Claude is working…**; when it
+finishes, your dev server hot-reloads with the changes.
+
+Under the hood it runs:
+
+```bash
+claude -p "<all open notes>" --permission-mode acceptEdits   # cwd = your project
+```
+
+`acceptEdits` auto-applies edits with no prompts; the agent batches all notes in one
+session (one click = one session = predictable cost). Requires the `claude` CLI on PATH.
+
+Configure via env:
+
+- `PAGE_FEEDBACK_AGENT_BIN` — agent binary (default `claude`)
+
+Prefer pulling notes yourself instead? The mailbox is just a file. For Claude Code,
+drop this into the project's `CLAUDE.md`:
 
 ```md
 ## Page feedback
@@ -83,6 +103,8 @@ When I say "check feedback", read `.feedback/inbox.jsonl`. For each note with
 - `POST /feedback` — append a note (`{ instruction, route, source_file, line, component, component_chain, selector, text }`)
 - `GET /feedback?status=open` — list notes
 - `PATCH /feedback` — `{ id, status: "open" | "done" }`
+- `POST /run` — dispatch one agent over all open notes (→ `{ dispatched }`, or `409` if already running)
+- `GET /run` — agent run status (`{ running, dispatched, ok, startedAt, finishedAt }`)
 
 ## Notes
 
