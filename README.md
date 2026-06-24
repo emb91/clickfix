@@ -34,6 +34,20 @@ type what should change → **Send**. Notes append to `.feedback/inbox.jsonl`.
 
 Options: `npx clickfix --port 7331 --dir .`
 
+### One-time: authenticate the agent
+
+The **Work now** button runs the `claude` CLI, which needs to be signed in **in a
+terminal** (a desktop-app login doesn't carry over). Do this once per machine:
+
+```bash
+claude auth login      # sign in to your Claude subscription
+claude auth status     # verify — should show you're logged in
+```
+
+This persists, so you don't repeat it each session — only the dev server and
+`npx clickfix` need restarting when you spin the app back up. If clickfix ever
+reports `Not logged in`, run `claude auth login` again.
+
 ## Where the script goes
 
 clickfix can't inject itself — your app has to load the script. Put it in
