@@ -121,7 +121,8 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
 
     let child
     try {
-      child = spawn(bin, args, { cwd: dir, env: process.env })
+      // stdin ignored so headless `claude` doesn't wait on a pipe for input.
+      child = spawn(bin, args, { cwd: dir, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
     } catch (err) {
       await setStatus(ids, "open")
       lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: false, log: String(err) }

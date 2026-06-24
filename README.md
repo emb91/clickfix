@@ -117,7 +117,16 @@ claude -p "<all open notes>" --permission-mode acceptEdits   # cwd = your projec
 ```
 
 `acceptEdits` auto-applies edits with no prompts; the agent batches all notes in one
-session (one click = one session = predictable cost). Requires the `claude` CLI on PATH.
+session (one click = one session = predictable cost).
+
+**Prerequisite:** the `claude` CLI must be on PATH **and signed in for headless use**.
+The desktop app's login doesn't carry into a plain terminal, so run this once:
+
+```bash
+claude auth login     # uses your Claude subscription; `claude auth status` to verify
+```
+
+Without it the agent exits with `Not logged in` and the notes are re-opened.
 
 Configure via env:
 
