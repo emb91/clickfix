@@ -1,0 +1,31 @@
+{
+  "name": "page-feedback",
+  "version": "0.1.0",
+  "description": "Click an element on your running site, type an edit, and your AI coding agent gets the exact page, component, source line, and instruction — no screenshots.",
+  "type": "module",
+  "bin": {
+    "page-feedback": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "server.mjs",
+    "toolbar.js",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node bin/cli.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "feedback",
+    "devtools",
+    "ai",
+    "coding-agent",
+    "claude",
+    "react",
+    "click-to-source"
+  ],
+  "license": "MIT"
+}
