@@ -1,12 +1,12 @@
-/* page-feedback toolbar — vanilla, framework-agnostic.
+/* clickfix toolbar — vanilla, framework-agnostic.
  * Loaded via <script src="http://localhost:PORT/toolbar.js"></script> in dev.
  * Click an element, type an edit; it captures route + selector + text always,
  * and (on React pages) the component chain + source file:line, then POSTs to the
  * sidecar. Reads the HOST page's React fibers directly from the DOM — the toolbar
  * itself needs no framework. */
 ;(function () {
-  if (window.__pageFeedbackLoaded) return
-  window.__pageFeedbackLoaded = true
+  if (window.__clickfixLoaded) return
+  window.__clickfixLoaded = true
 
   var ORIGIN = (function () {
     try {
@@ -129,7 +129,7 @@
   var state = { mode: "idle", captured: null, openCount: 0, toast: null, instruction: "", working: false }
 
   var root = document.createElement("div")
-  root.setAttribute("data-page-feedback", "")
+  root.setAttribute("data-clickfix", "")
   root.style.cssText =
     "position:fixed;bottom:16px;right:16px;z-index:" + Z + ";font-family:ui-sans-serif,system-ui,sans-serif;font-size:13px;color:#e7eaf0;"
 
@@ -345,7 +345,7 @@
 
   // ------------------------------------------------------------------- picking
   function within(t) {
-    return t && t.closest && t.closest("[data-page-feedback]")
+    return t && t.closest && t.closest("[data-clickfix]")
   }
   function onMove(e) {
     if (state.mode !== "picking") return

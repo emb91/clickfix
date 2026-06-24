@@ -8,10 +8,10 @@ function opt(name, def) {
 }
 
 if (args.includes("-h") || args.includes("--help")) {
-  console.log(`page-feedback — in-browser feedback toolbar → local mailbox for AI coding agents
+  console.log(`clickfix — in-browser feedback toolbar → local mailbox for AI coding agents
 
 Usage:
-  npx page-feedback [--port 7331] [--dir .]
+  npx clickfix [--port 7331] [--dir .]
 
 Then add this to your site (development only):
   <script src="http://localhost:7331/toolbar.js"></script>
@@ -20,10 +20,10 @@ Notes land in <dir>/.feedback/inbox.jsonl for your agent to read.`)
   process.exit(0)
 }
 
-const port = parseInt(opt("--port", process.env.PAGE_FEEDBACK_PORT || "7331"), 10)
+const port = parseInt(opt("--port", process.env.CLICKFIX_PORT || "7331"), 10)
 const dir = opt("--dir", process.cwd())
 
 startServer({ port, dir }).catch((err) => {
-  console.error("page-feedback failed to start:", err)
+  console.error("clickfix failed to start:", err)
   process.exit(1)
 })

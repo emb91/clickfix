@@ -80,9 +80,9 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   let lastRun = { running: false, startedAt: null, finishedAt: null, dispatched: 0, ok: null, log: "" }
 
   function agentArgs(prompt) {
-    // Override the whole command with PAGE_FEEDBACK_RUN_CMD (placeholders: {prompt} {port}),
-    // else default to Claude Code headless. Bin overridable via PAGE_FEEDBACK_AGENT_BIN.
-    const bin = process.env.PAGE_FEEDBACK_AGENT_BIN || "claude"
+    // Override the whole command with CLICKFIX_RUN_CMD (placeholders: {prompt} {port}),
+    // else default to Claude Code headless. Bin overridable via CLICKFIX_AGENT_BIN.
+    const bin = process.env.CLICKFIX_AGENT_BIN || "claude"
     return {
       bin,
       args: ["-p", prompt, "--permission-mode", "acceptEdits"],
@@ -97,7 +97,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       return `${i + 1}. [${n.id}] route ${n.route || "?"} — ${where}\n   text: ${n.text || "(none)"}\n   DO: ${n.instruction}`
     })
     return [
-      `You are working a batch of UI feedback notes left in this project via the page-feedback toolbar.`,
+      `You are working a batch of UI feedback notes left in this project via the clickfix toolbar.`,
       `For each note: open the indicated source location (or locate it via component + selector + on-screen text), make the edit described in DO, keeping the surrounding code style. Edit files only; do not run servers or commit.`,
       `If a note is ambiguous or you cannot safely make the change, skip it and say why at the end.`,
       ``,
@@ -139,10 +139,10 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       if (code === 0) await setStatus(ids, "done")
       else await setStatus(ids, "open") // failed → re-open so they show again
       lastRun = { ...lastRun, running: false, finishedAt: new Date().toISOString(), ok: code === 0, log: out.slice(-4000) }
-      console.log(`page-feedback: agent finished (exit ${code}); ${ids.length} note(s) ${code === 0 ? "done" : "re-opened"}`)
+      console.log(`clickfix: agent finished (exit ${code}); ${ids.length} note(s) ${code === 0 ? "done" : "re-opened"}`)
     })
 
-    console.log(`page-feedback: dispatched ${ids.length} note(s) to "${bin}"`)
+    console.log(`clickfix: dispatched ${ids.length} note(s) to "${bin}"`)
     return { dispatched: ids.length }
   }
 
@@ -229,7 +229,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
 
     if (url.pathname === "/") {
       res.writeHead(200, { "Content-Type": "text/plain" })
-      return res.end(`page-feedback running.\nmailbox: ${FILE}\nscript:  <script src="http://localhost:${port}/toolbar.js"></script>\n`)
+      return res.end(`clickfix running.\nmailbox: ${FILE}\nscript:  <script src="http://localhost:${port}/toolbar.js"></script>\n`)
     }
 
     res.writeHead(404)
@@ -237,7 +237,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   })
 
   await new Promise((resolve) => server.listen(port, resolve))
-  console.log(`page-feedback  →  http://localhost:${port}`)
+  console.log(`clickfix  →  http://localhost:${port}`)
   console.log(`  mailbox: ${FILE}`)
   console.log(`  add to your site (dev only):`)
   console.log(`    <script src="http://localhost:${port}/toolbar.js"></script>`)

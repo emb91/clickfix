@@ -1,10 +1,10 @@
 {
-  "name": "page-feedback",
+  "name": "clickfix",
   "version": "0.1.0",
   "description": "Click an element on your running site, type an edit, and your AI coding agent gets the exact page, component, source line, and instruction — no screenshots.",
   "type": "module",
   "bin": {
-    "page-feedback": "bin/cli.mjs"
+    "clickfix": "bin/cli.mjs"
   },
   "files": [
     "bin",
@@ -27,5 +27,14 @@
     "react",
     "click-to-source"
   ],
-  "license": "MIT"
+  "author": "Emma Bardsley",
+  "license": "MIT",
+  "homepage": "https://github.com/emb91/clickfix#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emb91/clickfix.git"
+  },
+  "bugs": {
+    "url": "https://github.com/emb91/clickfix/issues"
+  }
 }

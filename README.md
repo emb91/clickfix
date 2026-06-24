@@ -1,4 +1,4 @@
-# page-feedback
+# clickfix
 
 Click an element on your running site, type the edit you want, and your AI coding
 agent gets the **exact page, component, source line, selector, text, and your
@@ -20,7 +20,7 @@ Your site loads one `<script>` in dev. No backend changes, no framework lock-in.
 In your project directory:
 
 ```bash
-npx page-feedback          # starts on http://localhost:7331
+npx clickfix          # starts on http://localhost:7331
 ```
 
 Add this to your site **in development only** (e.g. behind a `NODE_ENV` check):
@@ -32,7 +32,7 @@ Add this to your site **in development only** (e.g. behind a `NODE_ENV` check):
 A **✦ Feedback** button appears bottom-right. Click it → click any element →
 type what should change → **Send**. Notes append to `.feedback/inbox.jsonl`.
 
-Options: `npx page-feedback --port 7331 --dir .`
+Options: `npx clickfix --port 7331 --dir .`
 
 ## What gets captured
 
@@ -84,13 +84,13 @@ session (one click = one session = predictable cost). Requires the `claude` CLI 
 
 Configure via env:
 
-- `PAGE_FEEDBACK_AGENT_BIN` — agent binary (default `claude`)
+- `CLICKFIX_AGENT_BIN` — agent binary (default `claude`)
 
 Prefer pulling notes yourself instead? The mailbox is just a file. For Claude Code,
 drop this into the project's `CLAUDE.md`:
 
 ```md
-## Page feedback
+## clickfix feedback
 When I say "check feedback", read `.feedback/inbox.jsonl`. For each note with
 `status: "open"`: open `source_file:line` (or locate via `component` + `selector`
 + `text`), make the edit in `instruction`, then mark it done:
