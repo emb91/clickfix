@@ -2,8 +2,9 @@
  * Loaded via <script src="http://localhost:PORT/toolbar.js"></script> in dev.
  * Click an element, type an edit; it captures route + selector + text always,
  * and (on React pages) the component chain + source file:line, then POSTs to the
- * sidecar. Reads the HOST page's React fibers directly from the DOM — the toolbar
- * itself needs no framework. */
+ * sidecar mailbox. You then work the notes in a Claude Code session with /clickfix.
+ * Reads the HOST page's React fibers directly from the DOM — the toolbar itself
+ * needs no framework. */
 ;(function () {
   if (window.__clickfixLoaded) return
   window.__clickfixLoaded = true
@@ -127,22 +128,12 @@
 
   // ----------------------------------------------------------------------- UI
   var state = {
-    mode: "idle",
+    mode: "idle", // idle | picking | compose
     captured: null,
     kind: "ui", // compose-panel choice: "ui" (visual tweak) | "behavior" (fix root cause)
-    uiCount: 0, // open notes by kind, for the per-mode work buttons
-    bugCount: 0,
+    openCount: 0, // notes waiting to be worked
     toast: null,
     instruction: "",
-    working: false,
-    activity: "",
-    // clarification loop
-    canReply: false, // a resumable agent session exists
-    agentMsg: "", // the agent's latest text (e.g. its diagnosis / question)
-    pendingIds: [], // behavior notes diagnosed and awaiting your approval
-    replyText: "",
-    prUrl: "", // the PR this conversation's edits were boxed into
-    branch: "", // its git branch
   }
 
   var root = document.createElement("div")
@@ -155,8 +146,8 @@
     "position:fixed;display:none;z-index:" + (Z - 1) + ";pointer-events:none;border:2px solid #2dd4bf;background:rgba(45,212,191,0.12);border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,0.4);"
 
   // -------------------------------------------------------------------- dragging
-  // The toolbar lives bottom-right by default; users can drag it anywhere by the
-  // ✦ Feedback button. Position persists per-origin in localStorage.
+  // The toolbar lives bottom-right by default; drag it anywhere by the ✦ Feedback
+  // button. Position persists per-origin in localStorage.
   var POS_KEY = "__clickfix_pos"
   var drag = null // { sx, sy, ox, oy, moved } while a drag is in progress
   var suppressClick = false // true briefly after a drag, so the trailing click is ignored
@@ -219,39 +210,7 @@
     document.documentElement.appendChild(root)
     applyPos(loadPos())
     refreshCount()
-    resumeIfRunning()
     render()
-  }
-
-  // Pull conversation state (agent's last message, resumable session, pending
-  // behavior notes) out of a /run payload into local state.
-  function adoptRun(s) {
-    if (!s) return
-    state.canReply = !!s.canReply
-    state.agentMsg = s.lastMessage || ""
-    state.pendingIds = Array.isArray(s.pendingIds) ? s.pendingIds : []
-    state.prUrl = s.prUrl || ""
-    state.branch = s.branch || ""
-  }
-
-  // Reconnect after a reload: resume the progress pill if still working, and
-  // restore any in-progress conversation so you can keep replying.
-  function resumeIfRunning() {
-    fetch(ORIGIN + "/run")
-      .then(function (r) {
-        return r.ok ? r.json() : null
-      })
-      .then(function (s) {
-        if (!s) return
-        adoptRun(s)
-        if (s.running) {
-          state.working = true
-          state.activity = s.activity || "working…"
-          pollRun()
-        }
-        render()
-      })
-      .catch(function () {})
   }
 
   function refreshCount() {
@@ -260,11 +219,7 @@
         return r.ok ? r.json() : { items: [] }
       })
       .then(function (d) {
-        var items = Array.isArray(d.items) ? d.items : []
-        state.bugCount = items.filter(function (e) {
-          return e.kind === "behavior"
-        }).length
-        state.uiCount = items.length - state.bugCount
+        state.openCount = Array.isArray(d.items) ? d.items.length : 0
         render()
       })
       .catch(function () {})
@@ -312,123 +267,11 @@
         state.instruction = ""
         state.captured = null
         state.mode = "idle"
-        toast(state.kind === "behavior" ? "Bug logged" : "Sent")
+        toast(state.kind === "behavior" ? "Bug logged → /clickfix" : "Sent → /clickfix")
         refreshCount()
       })
       .catch(function () {
         toast("Failed to send")
-      })
-  }
-
-  function runNow(kind) {
-    if (state.working) return
-    state.working = true
-    state.activity = "starting…"
-    render()
-    fetch(ORIGIN + "/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: kind || "ui" }),
-    })
-      .then(function (r) {
-        return r.json().then(function (d) {
-          return { ok: r.ok, d: d }
-        })
-      })
-      .then(function (res) {
-        if (!res.ok) {
-          state.working = false
-          toast((res.d && res.d.error) || "Couldn't start")
-          return
-        }
-        toast((kind === "behavior" ? "Diagnosing " : "Working on ") + res.d.dispatched + " note(s)…")
-        refreshCount()
-        pollRun()
-      })
-      .catch(function () {
-        state.working = false
-        toast("Couldn't reach agent")
-      })
-  }
-
-  // Send a follow-up message into the agent's session (clarify / approve / redirect).
-  function sendReply() {
-    var txt = (state.replyText || "").trim()
-    if (!txt || state.working) return
-    state.working = true
-    state.activity = "thinking…"
-    state.replyText = ""
-    render()
-    fetch(ORIGIN + "/reply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: txt }),
-    })
-      .then(function (r) {
-        return r.json().then(function (d) {
-          return { ok: r.ok, d: d }
-        })
-      })
-      .then(function (res) {
-        if (!res.ok) {
-          state.working = false
-          toast((res.d && res.d.error) || "Couldn't send reply")
-          return
-        }
-        toast("Sent to Claude…")
-        pollRun()
-      })
-      .catch(function () {
-        state.working = false
-        toast("Couldn't reach agent")
-      })
-  }
-
-  // Mark the notes in the current conversation resolved (you're happy with the fix).
-  function resolvePending() {
-    var ids = state.pendingIds || []
-    if (!ids.length) return
-    Promise.all(
-      ids.map(function (id) {
-        return fetch(ORIGIN + "/feedback", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: id, status: "done" }),
-        }).catch(function () {})
-      })
-    ).then(function () {
-      state.pendingIds = []
-      state.canReply = false
-      state.agentMsg = ""
-      state.prUrl = ""
-      state.branch = ""
-      toast("Resolved ✓")
-      refreshCount()
-    })
-  }
-
-  function pollRun() {
-    fetch(ORIGIN + "/run")
-      .then(function (r) {
-        return r.json()
-      })
-      .then(function (s) {
-        if (s.running) {
-          if (s.activity) state.activity = s.activity
-          if (s.lastMessage) state.agentMsg = s.lastMessage
-          render()
-          setTimeout(pollRun, 1200)
-          return
-        }
-        state.working = false
-        state.activity = ""
-        adoptRun(s)
-        toast(s.ok === false ? "Agent finished with issues" : s.kind === "behavior" ? "Diagnosis ready" : "Done ✓")
-        refreshCount()
-      })
-      .catch(function () {
-        state.working = false
-        refreshCount()
       })
   }
 
@@ -476,7 +319,7 @@
         (c.text ? '<div style="color:#64748b;margin-top:2px">“' + esc(c.text) + "”</div>" : "") +
         "</div>" +
         (bug
-          ? '<div style="font-size:11px;color:#fbbf24;margin-bottom:8px;line-height:1.4">Claude will trace the root cause and propose a fix before changing anything — you approve in the reply box.</div>'
+          ? '<div style="font-size:11px;color:#fbbf24;margin-bottom:8px;line-height:1.4">In /clickfix, Claude Code will trace the root cause and propose a fix before changing anything.</div>'
           : "") +
         '<textarea data-pf="ta" rows="3" placeholder="' +
         (bug ? "What&#39;s wrong here? (e.g. this shows the wrong company&#39;s data)" : "What should change here?") +
@@ -519,98 +362,18 @@
       return
     }
 
-    // Conversation card: the agent's latest message + a box to reply/clarify.
-    // Shown whenever there's a live session to talk to (e.g. a pending diagnosis).
-    if (state.agentMsg || state.canReply) {
-      var chat = document.createElement("div")
-      chat.style.cssText =
-        "width:320px;margin-bottom:8px;background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);"
-      var head =
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
-        '<span style="font-size:11px;font-weight:600;color:#2dd4bf">✦ Claude</span>' +
-        '<button data-pf="chat-x" style="background:transparent;border:none;color:#64748b;cursor:pointer;font-size:13px;line-height:1">✕</button>' +
-        "</div>"
-      var msg = state.agentMsg
-        ? '<div style="font-size:12px;color:#cbd5e1;line-height:1.5;max-height:160px;overflow:auto;white-space:pre-wrap;margin-bottom:8px">' +
-          esc(state.agentMsg) +
-          "</div>"
-        : ""
-      var pr = state.prUrl
-        ? '<a href="' +
-          esc(state.prUrl) +
-          '" target="_blank" rel="noopener" style="display:block;font-size:11px;color:#2dd4bf;text-decoration:none;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⎇ ' +
-          esc(state.branch || "PR") +
-          " → open PR ↗</a>"
-        : state.branch
-        ? '<div style="font-size:11px;color:#64748b;margin-bottom:8px">⎇ committed to ' + esc(state.branch) + "</div>"
-        : ""
-      var reply = state.working
-        ? ""
-        : '<textarea data-pf="reply" rows="2" placeholder="Reply to clarify or approve…" style="width:100%;box-sizing:border-box;resize:vertical;background:#020617;color:#e7eaf0;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:13px;outline:none"></textarea>' +
-          '<div style="display:flex;gap:8px;margin-top:8px">' +
-          '<button data-pf="reply-send" style="flex:1;border:none;border-radius:8px;padding:8px 10px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d">Reply (⌘↵)</button>' +
-          (state.pendingIds && state.pendingIds.length
-            ? '<button data-pf="reply-resolve" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">Resolve ✓</button>'
-            : "") +
-          "</div>"
-      chat.innerHTML = head + msg + pr + reply
-      root.appendChild(chat)
-      chat.querySelector('[data-pf="chat-x"]').addEventListener("click", function () {
-        state.agentMsg = ""
-        state.canReply = false
-        render()
-      })
-      var rta = chat.querySelector('[data-pf="reply"]')
-      if (rta) {
-        rta.value = state.replyText
-        rta.addEventListener("input", function () {
-          state.replyText = rta.value
-        })
-        rta.addEventListener("keydown", function (e) {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") sendReply()
-        })
-        chat.querySelector('[data-pf="reply-send"]').addEventListener("click", sendReply)
-        var rrb = chat.querySelector('[data-pf="reply-resolve"]')
-        if (rrb) rrb.addEventListener("click", resolvePending)
-      }
-    }
-
     var row = document.createElement("div")
-    row.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"
+    row.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end"
 
-    if (state.working) {
-      var pill = document.createElement("div")
-      pill.style.cssText =
-        "background:#0b1220;border:1px solid #2dd4bf;border-radius:12px;padding:8px 12px;max-width:300px;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
-      pill.innerHTML =
-        '<div style="color:#2dd4bf;font-weight:600;font-size:12px">⟳ Claude is working…</div>' +
-        (state.activity
-          ? '<div style="color:#94a3b8;font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
-            esc(state.activity) +
-            "</div>"
-          : "")
-      row.appendChild(pill)
-    } else {
-      if (state.uiCount) {
-        var work = document.createElement("button")
-        work.style.cssText =
-          "border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d;border:1px solid #2dd4bf;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
-        work.textContent = "▶ Work " + state.uiCount + " UI"
-        work.addEventListener("click", function () {
-          runNow("ui")
-        })
-        row.appendChild(work)
-      }
-      if (state.bugCount) {
-        var fix = document.createElement("button")
-        fix.style.cssText =
-          "border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;background:#0b1220;color:#fbbf24;border:1px solid #fbbf24;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
-        fix.textContent = "🪲 Fix " + state.bugCount
-        fix.addEventListener("click", function () {
-          runNow("behavior")
-        })
-        row.appendChild(fix)
-      }
+    // A passive badge: how many notes are waiting for /clickfix. Not a button —
+    // clickfix no longer runs the agent; you work the notes in Claude Code.
+    if (state.openCount && state.mode !== "picking") {
+      var badge = document.createElement("div")
+      badge.style.cssText =
+        "background:#0b1220;border:1px solid #1e293b;border-radius:999px;padding:8px 12px;color:#94a3b8;box-shadow:0 6px 24px rgba(0,0,0,0.4)"
+      badge.title = "Work these in a Claude Code session with /clickfix"
+      badge.textContent = state.openCount + " note" + (state.openCount > 1 ? "s" : "") + " → /clickfix"
+      row.appendChild(badge)
     }
 
     var btn = document.createElement("button")
