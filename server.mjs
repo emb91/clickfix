@@ -93,15 +93,17 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   }
 
   // --- git "boxing" -------------------------------------------------------
-  // Each conversation's edits get isolated onto their own clickfix/* branch and
-  // opened as a PR, so the agent's work is a reviewable unit instead of loose
-  // changes mixed into your working tree. We commit ONLY the files that changed
-  // during the run (diff of `git status` before/after), leaving your own
-  // uncommitted work alone. Modes via CLICKFIX_GIT: "pr" (default, branch+commit
-  // +push+PR), "commit" (branch+commit only), "0"/"off" (disabled).
-  const gitMode = (process.env.CLICKFIX_GIT || "pr").toLowerCase()
+  // Each conversation's edits get isolated onto their own clickfix/* branch so the
+  // agent's work is a reviewable unit instead of loose changes mixed into your tree.
+  // The commit is built ENTIRELY OUT-OF-BAND (a temp index + commit-tree + a branch
+  // ref) — the working tree, real index, and current branch are NEVER touched, so
+  // the agent's view stays stable and untracked files can't be wiped by a switch.
+  // We commit ONLY the files the agent changed, never your pre-existing dirty work.
+  // Modes via CLICKFIX_GIT: "commit" (default, branch+commit), "pr" (also push +
+  // open PR), "0"/"off" (disabled).
+  const gitMode = (process.env.CLICKFIX_GIT || "commit").toLowerCase()
   const GIT_ENABLED = !["0", "off", "false", "no"].includes(gitMode)
-  const AUTO_PUSH = GIT_ENABLED && !["commit", "local"].includes(gitMode)
+  const AUTO_PUSH = GIT_ENABLED && ["pr", "push"].includes(gitMode)
   let gitRepo = null // cached: is `dir` inside a git work tree?
 
   function run(cmd, args) {
@@ -177,46 +179,87 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     return { title, body }
   }
 
+  const gh = (args) => run("gh", args)
+
+  // Build a commit of `paths` (current working-tree content) on top of `parent`,
+  // WITHOUT touching the working tree, the real index, or HEAD. Uses a throwaway
+  // index seeded from the parent tree, so the agent's view of the repo never moves.
+  async function commitOutOfBand(parent, paths, message) {
+    const tmpIndex = path.join(mailboxDir, ".git-index-tmp")
+    const env = { ...process.env, GIT_INDEX_FILE: tmpIndex }
+    const gi = (args) =>
+      new Promise((resolve) =>
+        execFile("git", args, { cwd: dir, env, maxBuffer: 16 * 1024 * 1024 }, (err, o, e) =>
+          resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, out: (o || "").trim(), err: (e || "").trim() })
+        )
+      )
+    try {
+      let r = await gi(["read-tree", parent]) // seed temp index with parent's tree
+      if (r.code !== 0) throw new Error("read-tree: " + r.err)
+      r = await gi(["add", "-A", "--", ...paths]) // stage working-tree content (incl. deletions) of just these paths
+      if (r.code !== 0) throw new Error("add: " + r.err)
+      const tree = await gi(["write-tree"])
+      if (tree.code !== 0) throw new Error("write-tree: " + tree.err)
+      // commit-tree reads no index — safe to use the normal git here
+      const commit = await git(["commit-tree", tree.out, "-p", parent, "-m", message])
+      if (commit.code !== 0) throw new Error("commit-tree: " + (commit.err || commit.out))
+      return { sha: commit.out }
+    } catch (e) {
+      return { error: String(e.message || e) }
+    } finally {
+      try {
+        await fs.unlink(tmpIndex)
+      } catch {}
+    }
+  }
+
   // Commit (and optionally push + PR) the agent's edits from the just-finished run.
   // Returns { prUrl?, message? } and updates the conversation's git state on lastRun.
   async function boxUp(kind) {
     if (!GIT_ENABLED || !(await isGitRepo())) return {}
-    const before = lastRun.beforePaths || new Set()
-    const after = await modifiedPaths()
-    const changed = [...after].filter((p) => !before.has(p))
+    // The agent's net changes = everything dirty now, minus what was already dirty
+    // when the conversation started (your WIP) and the clickfix mailbox.
+    const userDirty = lastRun.userDirty || new Set()
+    const changed = [...(await modifiedPaths())].filter((p) => !userDirty.has(p) && !p.startsWith(".feedback/"))
     if (!changed.length) return {} // nothing new (e.g. a diagnosis-only pass)
 
     const notes = lastRun.notes || []
-    // Lazily create the conversation's branch the first time there's something to
-    // commit — `switch -c` carries the uncommitted edits onto the new branch.
+    const head = await git(["rev-parse", "HEAD"])
+    if (head.code !== 0) return { message: "git: no HEAD to base the commit on" }
+
+    // Rebuild the whole clickfix commit each turn (parent = current HEAD), so it
+    // always equals "HEAD + all the agent's changes so far" as one clean commit.
+    const { sha, error } = await commitOutOfBand(head.out, changed, commitMessage(notes, kind))
+    if (error) return { message: "git commit failed: " + error }
+
     if (!lastRun.gitBranch) {
       const baseRef = await git(["rev-parse", "--abbrev-ref", "HEAD"])
       lastRun.gitBase = baseRef.code === 0 && baseRef.out !== "HEAD" ? baseRef.out : null
       const suffix = (notes[0] && notes[0].id ? notes[0].id : "").slice(0, 4)
-      const branch = `clickfix/${kind === "behavior" ? "fix" : "ui"}-${stamp()}${suffix ? "-" + suffix : ""}`
-      const sw = await git(["switch", "-c", branch])
-      if (sw.code !== 0) return { message: "couldn't create branch: " + (sw.err || sw.out) }
-      lastRun.gitBranch = branch
-      console.log(`clickfix: branched ${branch} off ${lastRun.gitBase || "HEAD"}`)
+      lastRun.gitBranch = `clickfix/${kind === "behavior" ? "fix" : "ui"}-${stamp()}${suffix ? "-" + suffix : ""}`
     }
-
-    const add = await git(["add", "--", ...changed])
-    if (add.code !== 0) return { message: "git add failed: " + add.err }
-    const commit = await git(["commit", "-m", commitMessage(notes, kind), "--", ...changed])
-    if (commit.code !== 0) return { message: "git commit failed: " + (commit.err || commit.out) }
-    console.log(`clickfix: committed ${changed.length} file(s) to ${lastRun.gitBranch}`)
-    if (!AUTO_PUSH) return { message: `committed to ${lastRun.gitBranch}` }
+    const upd = await git(["update-ref", "refs/heads/" + lastRun.gitBranch, sha])
+    if (upd.code !== 0) return { message: "git update-ref failed: " + upd.err }
+    console.log(`clickfix: committed ${changed.length} file(s) to ${lastRun.gitBranch} (${sha.slice(0, 8)}) — working tree untouched`)
+    if (!AUTO_PUSH) return { message: `committed to ${lastRun.gitBranch} (no push)` }
 
     const r = await git(["remote"])
-    const hasRemote = r.code === 0 && r.out.length > 0
-    if (!hasRemote || !(await ghAvailable())) {
+    if (!(r.code === 0 && r.out.length) || !(await ghAvailable())) {
       return { message: `committed to ${lastRun.gitBranch} (no remote/gh — PR skipped)` }
     }
-    const push = await git(["push", "-u", "origin", lastRun.gitBranch])
+    // Force the ref (we rebuild the commit each turn) onto its own remote branch.
+    const push = await git(["push", "-f", "origin", `refs/heads/${lastRun.gitBranch}:refs/heads/${lastRun.gitBranch}`])
     if (push.code !== 0) return { message: "git push failed: " + push.err }
     if (lastRun.prUrl) {
       console.log(`clickfix: pushed to existing PR ${lastRun.prUrl}`)
       return { prUrl: lastRun.prUrl, message: `updated PR ${lastRun.prUrl}` }
+    }
+    // Base the PR on the branch you were on (clean diff = just the agent's changes),
+    // but warn loudly when that isn't the repo's default branch.
+    const def = await git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+    const defBranch = def.code === 0 ? def.out.replace(/^origin\//, "") : null
+    if (lastRun.gitBase && defBranch && lastRun.gitBase !== defBranch) {
+      console.log(`clickfix: ⚠ PR base is "${lastRun.gitBase}" (you're not on "${defBranch}") — it will merge there, not into ${defBranch}`)
     }
     const { title, body } = prText(notes, kind)
     const prArgs = ["pr", "create", "--title", title, "--body", body]
@@ -228,7 +271,6 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     console.log(`clickfix: opened PR ${url}`)
     return { prUrl: url, message: `opened PR ${url}` }
   }
-  const gh = (args) => run("gh", args)
 
   function shortPath(p) {
     if (!p) return ""
@@ -271,6 +313,14 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     })
   }
 
+  // The agent must NOT do any version control. clickfix commits the agent's edits
+  // itself, out-of-band, after the run — so if the agent also branches/commits it
+  // collides with that (and with any git hooks), and it may panic that committed work
+  // was "lost" when the tree state shifts under it. This directive overrides the
+  // user's global "one task = one branch" convention for clickfix runs.
+  const NO_GIT =
+    `VERSION CONTROL: Do NOT run any git commands — no branch, switch, checkout, stage, commit, push, stash, reset, or clean. Do not create branches or PRs. Just edit files and stop. clickfix automatically commits your edits to a dedicated branch when you finish; you don't need to (and must not) manage git, and you should not worry about "losing" uncommitted work — clickfix captures it. Any git command here may be blocked by a hook and waste the turn.`
+
   // Two kinds of note get two mindsets, run in separate passes (never bundled):
   //  • ui       — surgical visual edit at the clicked location.
   //  • behavior — the clicked element is a SYMPTOM; trace upstream to the root
@@ -289,14 +339,18 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
         `  - anything you're unsure about`,
         `Then STOP. The user will reply to approve or redirect; only after that should you make changes.`,
         ``,
+        NO_GIT,
+        ``,
         `Notes:`,
         ...noteLines(notes),
       ].join("\n")
     }
     return [
       `You are working a batch of UI feedback notes left in this project via the clickfix toolbar.`,
-      `For each note: open the indicated source location (or locate it via component + selector + on-screen text), make the edit described in DO, keeping the surrounding code style. Edit files only; do not run servers or commit.`,
+      `For each note: open the indicated source location (or locate it via component + selector + on-screen text), make the edit described in DO, keeping the surrounding code style. Edit files only; do not run servers.`,
       `If a note is ambiguous or you cannot safely make the change, skip it and say why at the end.`,
+      ``,
+      NO_GIT,
       ``,
       `Notes:`,
       ...noteLines(notes),
@@ -383,7 +437,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     await setStatus(ids, "in_progress")
 
     const { bin, args } = agentArgs(buildPrompt(open, kind))
-    const before = await gitSnapshot() // files already dirty — excluded from the commit
+    const userDirty = await gitSnapshot() // your pre-existing WIP — never committed by clickfix
     lastRun = {
       running: true,
       startedAt: new Date().toISOString(),
@@ -399,7 +453,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       pendingIds: kind === "behavior" ? ids : [], // behavior notes await an approval reply
       // git "boxing" state — fresh per conversation
       notes: open,
-      beforePaths: before,
+      userDirty, // captured once; persists across reply turns
       gitBranch: null,
       gitBase: null,
       prUrl: null,
@@ -426,8 +480,9 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     if (lastRun.running) return { error: "busy" }
     if (!lastRun.sessionId) return { error: "no_session" }
     const { bin, args } = agentArgs(text, lastRun.sessionId)
-    const before = await gitSnapshot() // re-snapshot so this turn's fix is what gets committed
-    lastRun = { ...lastRun, running: true, startedAt: new Date().toISOString(), finishedAt: null, ok: null, activity: "thinking…", recent: [], log: "", lastMessage: null, beforePaths: before }
+    // Keep the original userDirty (set at conversation start); boxUp commits the
+    // agent's full cumulative delta vs HEAD each turn, so no per-turn re-snapshot.
+    lastRun = { ...lastRun, running: true, startedAt: new Date().toISOString(), finishedAt: null, ok: null, activity: "thinking…", recent: [], log: "", lastMessage: null }
 
     let child
     try {
@@ -565,7 +620,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
     const top = await git(["rev-parse", "--show-toplevel"])
     const target = top.code === 0 ? top.out : null
     if (target) {
-      console.log(`  git: ${AUTO_PUSH ? "branch + commit + PR" : "branch + commit (no push)"} per conversation`)
+      console.log(`  git: ${AUTO_PUSH ? "branch + commit + push + PR" : "branch + commit only (no push)"} per conversation, out-of-band`)
       console.log(`  git target repo: ${target}`) // commits land HERE — the project you're editing, never clickfix
     } else {
       console.log(`  git: enabled but ${dir} is not a git repo — will no-op`)

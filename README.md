@@ -182,7 +182,7 @@ and the sidecar terminal prints the same readable log — instead of a frozen "w
 Configure via env:
 
 - `CLICKFIX_AGENT_BIN` — agent binary (default `claude`)
-- `CLICKFIX_GIT` — git boxing mode (see below): `pr` (default), `commit`, or `0`/`off`
+- `CLICKFIX_GIT` — git boxing mode (see below): `commit` (default), `pr`, or `0`/`off`
 
 Prefer pulling notes yourself instead? The mailbox is just a file. For Claude Code,
 drop this into the project's `CLAUDE.md`:
@@ -195,41 +195,50 @@ When I say "check feedback", read `.feedback/inbox.jsonl`. For each note with
 `curl -X PATCH http://localhost:7331/feedback -H 'Content-Type: application/json' -d '{"id":"<id>","status":"done"}'`
 ```
 
-## Boxing the agent's work into a branch + PR
+## Boxing the agent's work into a branch
 
 By default, instead of leaving the agent's edits as loose changes in your working
 tree, clickfix **isolates each conversation's edits onto their own
-`clickfix/<kind>-<timestamp>` branch and opens a PR** — so its work is a reviewable
-unit, not something that gets lost alongside whatever else you're doing.
+`clickfix/<kind>-<timestamp>` branch** — so its work is a reviewable unit, not
+something that gets lost alongside whatever else you're doing.
 
-How it stays clean:
+How it stays clean and **safe**:
 
-- **Only the agent's edits are committed.** clickfix diffs `git status` before and
-  after each run and commits *just* the files that changed during it — your own
-  uncommitted work is left untouched and never ends up in the PR.
-- **One branch + PR per conversation.** A Work/Fix click starts it; replies add
-  commits to the same branch/PR. A behaviour *diagnosis* (which edits nothing) makes
-  no commit — the branch is created lazily the first time there's a real change.
-- **In-place, off your current HEAD.** It switches you onto the clickfix branch in
-  the same working tree, so your dev server and the on-screen changes aren't
-  disturbed; you stay on the branch so the fix is visible live until you merge.
+- **The commit is built entirely out-of-band.** clickfix never runs `git switch`,
+  `add`, `commit`, or `reset` against your live repo. It builds the commit in a
+  throwaway index (`read-tree` → `add` → `write-tree` → `commit-tree`) and moves a
+  branch ref. **Your working tree, index, and current branch are never touched** —
+  so the agent's view stays stable and untracked files can't be wiped by a branch
+  switch. The changes stay in your tree, uncommitted, for live preview; the branch
+  is a parallel snapshot.
+- **Only the agent's edits are committed.** clickfix snapshots your dirty files when
+  the conversation starts and commits only what changed *after* that — your own
+  pre-existing WIP is never swept in. New untracked files the agent creates **are**
+  captured.
+- **The agent does no git itself.** It's told explicitly not to branch/commit/push
+  (clickfix handles that), so it doesn't fight git-workflow hooks or your global
+  "one branch per task" rule, and won't panic that committed work was "lost."
+- **One branch per conversation.** A Work/Fix click starts it; replies update the
+  same branch (the commit is rebuilt each turn = HEAD + all the agent's changes). A
+  behaviour *diagnosis* (which edits nothing) makes no commit.
 - **It commits to the project you're editing**, i.e. the `--dir` you launched
   clickfix in (`process.cwd()` by default) — never the clickfix package. The startup
-  banner prints `git target repo: <path>` so you can confirm which repo will receive
-  commits.
+  banner prints `git target repo: <path>` so you can confirm.
 
 Modes via `CLICKFIX_GIT`:
 
 | Value | Behaviour |
 |-------|-----------|
-| `pr` *(default)* | branch + commit + push + open PR via `gh` |
-| `commit` | branch + commit only — no push, no PR |
-| `0` / `off` | disabled — edits stay as working-tree changes (the old behaviour) |
+| `commit` *(default)* | branch + commit only — no push, no PR |
+| `pr` | also push the branch and open a PR via `gh` |
+| `0` / `off` | disabled — edits stay as working-tree changes |
 
+`commit` is the default because the PR push is outward-facing: on a repo you're
+mid-feature on, it can open a PR against the *wrong* base. Opt into `pr` per repo
+once you trust it; in `pr` mode the PR targets the branch you're on (clean diff =
+just the agent's changes) and clickfix **warns** if that isn't your default branch.
 Push/PR needs a git remote and the `gh` CLI authenticated (`gh auth status`); without
-them clickfix commits locally and logs that it skipped the PR. Add `.feedback/` to
-your `.gitignore` so the mailbox is never committed (it's auto-excluded from clickfix
-commits regardless, since it's always dirty before a run).
+them clickfix keeps the local commit and logs that it skipped the PR.
 
 ## API
 
