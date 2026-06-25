@@ -30,14 +30,29 @@ you're about to do before you touch anything.
 
 `route` is the page/URL the note was left on — navigate the code accordingly.
 
-## 3. Resolve
+## 3. Save the fix (commit it so it can't get lost)
 
-When a note is done and I'm happy with it, mark it resolved: in `.feedback/inbox.jsonl`,
-change that note's `"status":"open"` to `"status":"done"` (match on its `id`; leave the
-other notes untouched). The toolbar badge drops the count on its next refresh.
+As soon as a fix is settled — a UI tweak made, or a behaviour fix I've approved —
+**commit it** before moving on. Uncommitted edits can be wiped by a later branch
+switch or another tool working in the same repo, so don't let fixes pile up unsaved.
+
+- Stage ONLY the files you changed for that note, by explicit path — never `git add -A`.
+- Commit on the **current branch** with a clear message, e.g. `clickfix: <instruction>`.
+- Do NOT create branches, switch branches, or push — just a plain local commit.
+- One commit per note (or per approved batch) keeps it traceable.
+
+If I say I'd rather review everything first, hold off and just leave the edits in the
+working tree — but tell me clearly that they're uncommitted.
+
+## 4. Resolve
+
+Once a note's fix is committed, mark it resolved: in `.feedback/inbox.jsonl`, change that
+note's `"status":"open"` to `"status":"done"` (match on its `id`; leave the other notes
+untouched). The toolbar badge drops the count on its next refresh.
 
 ## Rules
 
-- Don't manage git / branches / commits unless I ask — I'll handle version control.
+- Commit on whatever branch I'm currently on. If I want the clickfix fixes isolated,
+  I'll switch you to a fresh branch first — don't switch branches yourself.
 - Process `ui` and `behavior` notes as separate passes; don't conflate a CSS tweak with
   a logic fix.
