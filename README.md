@@ -142,7 +142,8 @@ Notes captured by the toolbar just sit in `.feedback/inbox.jsonl`. To act on the
 /clickfix
 ```
 
-It reads the open notes, lists them grouped by kind, then:
+Each run **claims one ticket at a time** from the sidecar, works it, commits the fix,
+and resolves it — then claims the next, until the queue's empty. Per ticket:
 
 - **UI tweaks** — makes the edit at the captured `source_file:line` (or via
   `component` + `selector` + on-screen `text`), matching surrounding style.
@@ -151,22 +152,34 @@ It reads the open notes, lists them grouped by kind, then:
 
 Because it's just your Claude Code session, **clarifying is normal chat** — *"yes, go
 ahead"*, *"no, the real issue is the API filter"* — with full context and no
-terminal-vs-popup juggling. When a note's done, it flips that note's `status` to `done`
-in the mailbox and the toolbar badge drops the count.
+terminal-vs-popup juggling. Each fix is committed on your current branch as it's
+finished, then the ticket is resolved and the toolbar badge drops.
 
-> The toolbar shows a passive **`N notes → /clickfix`** badge so you know how many are
-> waiting. clickfix no longer runs its own agent — *you* (in Claude Code) are the agent,
-> which means git, branches, and commits stay entirely in your hands.
+### Parallel threads & targeting
+
+Claiming a ticket flips it to `in_progress` **atomically** (the sidecar is a single
+process, so two threads can't grab the same note). That means:
+
+- **Open several Claude Code threads, run `/clickfix` in each** → they divide the open
+  tickets between them, no double-work. Each thread holds one ticket at a time, so the
+  queue keeps draining across all of them.
+- **Point a thread at a specific ticket:** `/clickfix <id>` (full id or short prefix)
+  claims just that one and stops.
+
+> The toolbar shows a passive **`N notes → /clickfix`** badge of how many are still
+> `open` (claimed/in-progress ones drop off). clickfix runs no agent of its own —
+> *you* (in Claude Code) are the agent, so git, branches, and commits stay in your hands.
 
 Prefer to drive it yourself without the command? The mailbox is just a file — read
-`.feedback/inbox.jsonl`, act on `status: "open"` notes, and set them to `"done"`.
+`.feedback/inbox.jsonl` and act on `status: "open"` notes.
 
 ## API
 
 - `GET /toolbar.js` — the injected toolbar
 - `POST /feedback` — append a note (`{ instruction, kind, route, source_file, line, component, component_chain, selector, text }`); `kind` is `"ui"` (default) or `"behavior"`
-- `GET /feedback?status=open` — list notes
-- `PATCH /feedback` — `{ id, status: "open" | "done" }` — mark a note done (what `/clickfix` calls on resolve)
+- `GET /feedback?status=open` — list notes (`status` ∈ `open` | `in_progress` | `done`)
+- `POST /claim` — atomically claim a ticket (`{ id? , kind? }`) → `{ note }` (now `in_progress`) or `{ note: null, reason }`. How parallel `/clickfix` threads divide work.
+- `PATCH /feedback` — `{ id, status: "open" | "in_progress" | "done" }` — resolve (`done`), or release a claim back to `open`
 
 ## Notes
 

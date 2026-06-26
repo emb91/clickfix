@@ -1,58 +1,74 @@
 ---
-description: Work the clickfix feedback notes captured from this project's in-browser toolbar
+description: Work clickfix feedback notes as tickets — claim one at a time so parallel threads don't collide
+argument-hint: "[note id/prefix, or empty for the next ticket]"
 ---
 
-You are working UI / behaviour feedback captured via the **clickfix** toolbar. The
-notes live in `.feedback/inbox.jsonl` in this project — one JSON object per line.
+You work clickfix feedback as **tickets**, claiming them one at a time from the local
+clickfix sidecar. Claiming flips a note to `in_progress` atomically, so other Claude
+Code threads running `/clickfix` never grab the same note — open N threads and they
+divide the queue between them.
 
-## 1. Read the open notes
+Sidecar base URL: **`http://localhost:7331`** (default port — if you started `clickfix`
+with a different `--port`, use that).
 
-Read `.feedback/inbox.jsonl`. Each note looks like:
+The argument passed to this command is: `$ARGUMENTS`
 
-`{ "id", "status", "route", "source_file", "line", "component", "component_chain", "selector", "text", "kind", "instruction" }`
+## 1. Claim a ticket
 
-Work only notes with `"status": "open"`. If there are none (or the file doesn't exist),
-say so and stop. Otherwise list the open notes grouped by `kind` so I can see what
-you're about to do before you touch anything.
+- **If the argument above is non-empty**, claim that specific note (id or short prefix):
+  ```
+  curl -s -X POST http://localhost:7331/claim -H 'Content-Type: application/json' -d '{"id":"$ARGUMENTS"}'
+  ```
+- **If the argument is empty**, claim the next available ticket:
+  ```
+  curl -s -X POST http://localhost:7331/claim -H 'Content-Type: application/json' -d '{}'
+  ```
 
-## 2. Work each note by its kind
+Read the JSON response:
+- `{"note": { ... }}` → that note is now **yours** (`in_progress`); no other thread can
+  take it. Proceed to work it.
+- `{"note": null, "reason": "..."}` → nothing to claim (queue empty, or the targeted note
+  is already `in_progress`/`done`). Report the reason and **stop**.
+- If `curl` can't connect, the sidecar isn't running — tell me to start `clickfix` in
+  this project, then stop.
 
-- **kind: "ui"** — a visual / copy tweak. Open `source_file:line`; if that's missing,
-  locate the element via `component` + `component_chain` + `selector` + the on-screen
-  `text`. Make the change described in `instruction`, matching the surrounding style.
-  These are usually safe to just do.
+Tell me which ticket you claimed (id + instruction) before touching code.
 
-- **kind: "behavior"** — a bug. The clicked element (`selector` / `source_file`) is
-  where the problem SHOWED UP, not necessarily its cause. Trace UPSTREAM — where the
-  data is fetched / computed / prompted / passed in — to the ROOT CAUSE. Do NOT paper
-  over it by changing the UI. **Diagnose first:** tell me the root cause (file:line) and
-  the fix you propose, then wait for my go-ahead before editing.
+## 2. Work the ticket (by its kind)
 
-`route` is the page/URL the note was left on — navigate the code accordingly.
+- **kind: "ui"** — a visual/copy tweak. Open `source_file:line`; if missing, locate via
+  `component` + `component_chain` + `selector` + on-screen `text`. Make the change in
+  `instruction`, matching surrounding style. Safe to just do.
+- **kind: "behavior"** — a bug. The clicked element is where it SHOWED UP, not the cause.
+  Trace UPSTREAM to the ROOT CAUSE; don't paper over it in the UI. **Diagnose first:**
+  show me the root cause (file:line) + proposed fix, and wait for my go-ahead.
+  - If I **defer or reject**, release the ticket so it's not stuck, then stop:
+    ```
+    curl -s -X PATCH http://localhost:7331/feedback -H 'Content-Type: application/json' -d '{"id":"<id>","status":"open"}'
+    ```
 
-## 3. Save the fix (commit it so it can't get lost)
+## 3. Commit the fix
 
-As soon as a fix is settled — a UI tweak made, or a behaviour fix I've approved —
-**commit it** before moving on. Uncommitted edits can be wiped by a later branch
-switch or another tool working in the same repo, so don't let fixes pile up unsaved.
+Once the fix is settled, **commit it immediately** so it can't be lost:
+- Stage ONLY the files you changed, by explicit path — never `git add -A`.
+- Commit on the **current branch**, message `clickfix: <instruction>`.
+- No branch creation, no switching, no push.
 
-- Stage ONLY the files you changed for that note, by explicit path — never `git add -A`.
-- Commit on the **current branch** with a clear message, e.g. `clickfix: <instruction>`.
-- Do NOT create branches, switch branches, or push — just a plain local commit.
-- One commit per note (or per approved batch) keeps it traceable.
+## 4. Resolve the ticket
 
-If I say I'd rather review everything first, hold off and just leave the edits in the
-working tree — but tell me clearly that they're uncommitted.
+Mark it done **through the sidecar** (the server owns the mailbox file — don't hand-edit it):
+```
+curl -s -X PATCH http://localhost:7331/feedback -H 'Content-Type: application/json' -d '{"id":"<id>","status":"done"}'
+```
 
-## 4. Resolve
+## 5. Next ticket
 
-Once a note's fix is committed, mark it resolved: in `.feedback/inbox.jsonl`, change that
-note's `"status":"open"` to `"status":"done"` (match on its `id`; leave the other notes
-untouched). The toolbar badge drops the count on its next refresh.
+- If an argument was given, you handled that one specific ticket — **stop**.
+- If no argument, return to step 1 and claim the **next** ticket. Repeat until claim
+  returns `{"note": null}`. You only ever hold ONE ticket at a time, so other threads
+  keep draining the queue alongside you.
 
 ## Rules
-
-- Commit on whatever branch I'm currently on. If I want the clickfix fixes isolated,
-  I'll switch you to a fresh branch first — don't switch branches yourself.
-- Process `ui` and `behavior` notes as separate passes; don't conflate a CSS tweak with
-  a logic fix.
+- One ticket `in_progress` at a time: claim → finish (or release) → claim next.
+- Commit on whatever branch I'm on; if I want isolation I'll put you on a branch first.
+- Handle `ui` and `behavior` on their own terms — never conflate a CSS tweak with a logic fix.
