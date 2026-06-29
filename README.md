@@ -17,39 +17,45 @@ no framework lock-in, no second agent to babysit.
  └──────────────────┘                    └────────────────────┘               └──────────┘
 ```
 
+## Requirements
+
+clickfix captures feedback in the browser; the *fixing* happens in **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** via a slash command. So you need:
+
+- **Node 18+**
+- **Claude Code** (the work runs through `/clickfix` / `/clickfix-doc`). No Claude Code? You can still capture notes — they're just a JSONL file you read yourself.
+
+## Install
+
+Not on npm yet — install from GitHub (the repo is public):
+
+```bash
+npm i -g github:emb91/clickfix        # gives you the `clickfix` command
+clickfix install                       # adds /clickfix + /clickfix-doc to ~/.claude/commands
+```
+
+(Or clone the repo and `npm link`.) `clickfix install` only needs running once per machine — the slash commands then work in any project.
+
 ## Quick start
 
-In your project directory:
+1. **Run the sidecar** in your project (leave it running):
+   ```bash
+   clickfix          # http://localhost:7331  (use --port / --dir to change)
+   ```
+2. **Add the toolbar** to your site, **development only** (e.g. behind a `NODE_ENV` check):
+   ```html
+   <script src="http://localhost:7331/toolbar.js"></script>
+   ```
+3. **Leave feedback:** a **✦ Feedback** button appears bottom-right (drag it anywhere — it
+   remembers). Click it → click any element → pick **✦ UI tweak** or **🪲 Fix behaviour** →
+   type what should change → **Send**. Notes append to `.feedback/inbox.jsonl`.
+4. **Work the notes in Claude Code** — open a session **rooted in the same project** and run:
+   - `/clickfix` — fixes each ticket (UI tweaks directly; behaviour bugs diagnosed-first),
+     commits each fix, and resolves it. Clarify by chatting normally.
+   - `/clickfix-doc` — *diagnoses* each ticket into `.clickfix/clickfix_rootcause_bugs.md`
+     and closes it **without changing code** — a handoff doc for a reviewer to implement later.
 
-```bash
-npx clickfix          # starts on http://localhost:7331
-```
-
-Add this to your site **in development only** (e.g. behind a `NODE_ENV` check):
-
-```html
-<script src="http://localhost:7331/toolbar.js"></script>
-```
-
-A **✦ Feedback** button appears bottom-right (drag it anywhere — it remembers).
-Click it → click any element → pick **✦ UI tweak** or **🪲 Fix behaviour** → type
-what should change → **Send**. Notes append to `.feedback/inbox.jsonl`.
-
-Options: `npx clickfix --port 7331 --dir .`
-
-### One-time: install the /clickfix command
-
-Work the captured notes in Claude Code with the `/clickfix` slash command. Install it
-once (drops it into `~/.claude/commands/`, so it's available in any project):
-
-```bash
-npx clickfix install
-```
-
-Then, in a **Claude Code session running in your project**, type `/clickfix` — it reads
-the open notes, works the UI tweaks, diagnoses the behaviour bugs (and checks with you
-before changing logic), and you clarify by just chatting normally. No separate agent,
-no terminal-vs-popup chat — it's your Claude Code conversation.
+Both claim tickets atomically, so you can run several Claude Code threads and they divide
+the queue without colliding (`/clickfix <id>` targets a specific one).
 
 ## Where the script goes
 

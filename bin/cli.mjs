@@ -17,27 +17,40 @@ if (args.includes("-h") || args.includes("--help")) {
 
 Usage:
   npx clickfix [--port 7331] [--dir .]   start the sidecar (serves the toolbar + mailbox)
-  npx clickfix install                   install the /clickfix Claude Code command
+  npx clickfix install                   install the /clickfix + /clickfix-doc Claude Code commands
 
-Then add this to your site (development only):
-  <script src="http://localhost:7331/toolbar.js"></script>
+Setup (one time):
+  1. npx clickfix install                # adds the slash commands to ~/.claude/commands
+  2. add to your site, DEV ONLY:
+       <script src="http://localhost:7331/toolbar.js"></script>
 
-Click an element, type your feedback — it lands in <dir>/.feedback/inbox.jsonl.
-Work the notes in a Claude Code session in the same project with:  /clickfix`)
+Each session:
+  - npx clickfix                         # run the sidecar in your project
+  - click an element, type feedback → it lands in <dir>/.feedback/inbox.jsonl
+  - in Claude Code (session rooted in your project):
+       /clickfix       fix each ticket and commit it
+       /clickfix-doc   diagnose each ticket into a review doc, no code changes
+
+Requires Claude Code (the work happens via the slash commands).`)
   process.exit(0)
 }
 
-// `clickfix install` — drop the /clickfix slash command into ~/.claude/commands so
-// it's available in Claude Code from any project.
+// `clickfix install` — drop the clickfix slash commands into ~/.claude/commands so
+// they're available in Claude Code from any project. Installs every command shipped
+// in the package's commands/ dir (currently /clickfix and /clickfix-doc).
 if (args[0] === "install") {
-  const src = path.join(here, "..", "commands", "clickfix.md")
+  const srcDir = path.join(here, "..", "commands")
   const destDir = path.join(os.homedir(), ".claude", "commands")
-  const dest = path.join(destDir, "clickfix.md")
   try {
     await fs.mkdir(destDir, { recursive: true })
-    await fs.copyFile(src, dest)
-    console.log(`clickfix: installed /clickfix command → ${dest}`)
-    console.log(`  Run /clickfix in a Claude Code session in your project to work captured notes.`)
+    const files = (await fs.readdir(srcDir)).filter((f) => f.endsWith(".md"))
+    for (const f of files) {
+      await fs.copyFile(path.join(srcDir, f), path.join(destDir, f))
+      console.log(`clickfix: installed /${f.replace(/\.md$/, "")} → ${path.join(destDir, f)}`)
+    }
+    console.log(`  In a Claude Code session in your project:`)
+    console.log(`    /clickfix      — fix each ticket and commit it`)
+    console.log(`    /clickfix-doc  — diagnose each ticket into .clickfix/clickfix_rootcause_bugs.md (no code changes)`)
   } catch (err) {
     console.error("clickfix: install failed:", err)
     process.exit(1)
