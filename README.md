@@ -74,11 +74,11 @@ Put it in whatever file renders on every page (your root layout / template) — 
 
 1. **Start the sidecar from your project root** and leave it running:
    ```bash
-   cd /path/to/your/project       # ← important: cd into your project first
-   clickfix                        # serves http://localhost:7331  (override with --port / --dir)
+   cd /path/to/your/project && clickfix     # serves http://localhost:7331
    ```
-   (Your dev server runs as normal alongside it. Alternatively, run from anywhere with
-   `clickfix --dir /path/to/your/project`.)
+   The `cd` matters — clickfix stores tickets in `<that folder>/.feedback/`. (Override the
+   port/dir with `clickfix --port 7331 --dir /path/to/your/project` to run from anywhere.)
+   Your dev server runs as normal alongside it.
 2. **Leave feedback in the browser.** A **✦ Feedback** button appears bottom-right (drag it
    anywhere — it remembers). Click it → click any element → choose **✦ UI tweak** or
    **🪲 Fix behaviour** → type what should change → **Send**. The button shows a
