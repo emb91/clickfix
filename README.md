@@ -17,45 +17,76 @@ no framework lock-in, no second agent to babysit.
  └──────────────────┘                    └────────────────────┘               └──────────┘
 ```
 
-## Requirements
+## How it works (the mental model)
 
-clickfix captures feedback in the browser; the *fixing* happens in **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** via a slash command. So you need:
+clickfix is **two halves**:
+
+1. A **browser toolbar** that captures feedback — you click an element on your running app,
+   type what's wrong, and it saves a precise "ticket" (page + element + source file:line +
+   your note) to a local file (`.feedback/inbox.jsonl`).
+2. Two **[Claude Code](https://docs.anthropic.com/en/docs/claude-code) commands** that work
+   those tickets — `/clickfix` (fix them) and `/clickfix-doc` (diagnose them into a doc).
+
+So when you're using it, **three things run at once** in your project: your **dev server**,
+the **clickfix sidecar** (serves the toolbar + holds the tickets), and a **Claude Code**
+session (does the actual work). The capture and the fixing are deliberately separate — leave
+a pile of feedback while you click around, then action it all in Claude Code when ready.
+
+> **`/clickfix` and `/clickfix-doc` are Claude Code commands (a.k.a. skills).** They're just
+> markdown files in `~/.claude/commands/`; in current Claude Code, slash commands and skills
+> are the same thing. `clickfix install` is what puts them on your machine — after that you
+> just type `/clickfix` in any Claude Code session.
+
+## What you need
 
 - **Node 18+**
-- **Claude Code** (the work runs through `/clickfix` / `/clickfix-doc`). No Claude Code? You can still capture notes — they're just a JSONL file you read yourself.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — the fixing happens here.
+  (No Claude Code? You can still capture tickets; they're just a JSONL file you could read
+  with any agent.)
 
-## Install
-
-Not on npm yet — install from GitHub (the repo is public):
+## Setup — once per machine
 
 ```bash
-npm i -g github:emb91/clickfix        # gives you the `clickfix` command
-clickfix install                       # adds /clickfix + /clickfix-doc to ~/.claude/commands
+npm i -g github:emb91/clickfix     # installs the `clickfix` command (not on npm yet — from GitHub)
+clickfix install                    # adds the /clickfix and /clickfix-doc commands to ~/.claude/commands
 ```
 
-(Or clone the repo and `npm link`.) `clickfix install` only needs running once per machine — the slash commands then work in any project.
+`clickfix install` only needs running once — the commands then work in **every** project.
+(Prefer a local checkout? `git clone` the repo, then `npm link`, then `clickfix install`.)
 
-## Quick start
+## Setup — once per project
 
-1. **Run the sidecar** in your project (leave it running):
+Load the toolbar in your app, **development only** (so it never ships to production):
+
+```html
+<script src="http://localhost:7331/toolbar.js"></script>
+```
+
+Put it in whatever file renders on every page (your root layout / template) — see
+[Where the script goes](#where-the-script-goes) for per-framework placement.
+
+## Daily use
+
+1. **Start the sidecar** in your project and leave it running:
    ```bash
-   clickfix          # http://localhost:7331  (use --port / --dir to change)
+   clickfix          # serves http://localhost:7331  (override with --port / --dir)
    ```
-2. **Add the toolbar** to your site, **development only** (e.g. behind a `NODE_ENV` check):
-   ```html
-   <script src="http://localhost:7331/toolbar.js"></script>
-   ```
-3. **Leave feedback:** a **✦ Feedback** button appears bottom-right (drag it anywhere — it
-   remembers). Click it → click any element → pick **✦ UI tweak** or **🪲 Fix behaviour** →
-   type what should change → **Send**. Notes append to `.feedback/inbox.jsonl`.
-4. **Work the notes in Claude Code** — open a session **rooted in the same project** and run:
-   - `/clickfix` — fixes each ticket (UI tweaks directly; behaviour bugs diagnosed-first),
-     commits each fix, and resolves it. Clarify by chatting normally.
-   - `/clickfix-doc` — *diagnoses* each ticket into `.clickfix/clickfix_rootcause_bugs.md`
-     and closes it **without changing code** — a handoff doc for a reviewer to implement later.
+   (Your dev server runs as normal alongside it.)
+2. **Leave feedback in the browser.** A **✦ Feedback** button appears bottom-right (drag it
+   anywhere — it remembers). Click it → click any element → choose **✦ UI tweak** or
+   **🪲 Fix behaviour** → type what should change → **Send**. The button shows a
+   **`N notes → /clickfix`** badge of how many are waiting.
+3. **Work the tickets in Claude Code.** Open a Claude Code session **in the same project
+   folder** and run one of:
+   - **`/clickfix`** — works each ticket: makes UI tweaks directly, diagnoses behaviour bugs
+     first (and checks with you before changing logic), commits each fix, and resolves it.
+     You clarify by just chatting.
+   - **`/clickfix-doc`** — *diagnoses only*: writes findings to a doc and closes the ticket
+     **without touching code** (see [below](#diagnose-only-mode-clickfix-doc)).
 
-Both claim tickets atomically, so you can run several Claude Code threads and they divide
-the queue without colliding (`/clickfix <id>` targets a specific one).
+   Run several Claude Code sessions at once and they split the queue automatically (tickets
+   are claimed atomically — no two sessions grab the same one). `/clickfix <id>` targets one
+   specific ticket.
 
 ## Where the script goes
 
@@ -178,6 +209,39 @@ process, so two threads can't grab the same note). That means:
 
 Prefer to drive it yourself without the command? The mailbox is just a file — read
 `.feedback/inbox.jsonl` and act on `status: "open"` notes.
+
+## Diagnose-only mode (/clickfix-doc)
+
+Sometimes you don't want the agent to *change* anything yet — you want it to **investigate
+and write up** each ticket so you (or a reviewer, or a separate implementation agent) can
+decide what to do. That's `/clickfix-doc`.
+
+```
+/clickfix-doc
+```
+
+For each ticket it claims, it:
+
+1. **Investigates only** — traces the root cause, works out the concrete fix, notes related
+   issues — but **changes no code**.
+2. **Writes its findings** to `.clickfix/clickfix_rootcause_bugs.md` — appending a section
+   per ticket (what it investigated, root cause + `file:line`, the recommended fix, anything
+   else worth a look). It creates the doc if it doesn't exist.
+3. **Closes the ticket** (so the toolbar badge drops) — in this mode *documented = done*.
+
+It uses the same atomic ticket queue, so the parallel-threads and `/clickfix-doc <id>`
+targeting above work identically. The output is one growing markdown file you can read,
+hand to a teammate, or feed to `/clickfix` later to implement.
+
+**When to use which:**
+
+| | `/clickfix` | `/clickfix-doc` |
+|---|---|---|
+| Changes code? | ✅ fixes + commits | ❌ never |
+| Output | edits on your branch | a section in `.clickfix/clickfix_rootcause_bugs.md` |
+| Use it when | you trust it to just fix things | you want to review root causes first, or batch up a backlog for a reviewer |
+
+Tip: add `.clickfix/` to your project's `.gitignore` — it's a working doc, not source.
 
 ## API
 
