@@ -260,6 +260,16 @@ hand to a teammate, or feed to `/clickfix` later to implement.
 
 Tip: add `.clickfix/` to your project's `.gitignore` — it's a working doc, not source.
 
+## Advanced: multi-agent orchestration
+
+If you want to go beyond "click → `/clickfix`" and run a **fleet of agents off the
+backlog** — an orchestrator that hands each ticket to a sub-agent, audits the work, and
+opens PRs, with a human owner making product calls — there are starter templates in
+[`templates/orchestration/`](templates/orchestration/) (an `AGENTS.md` + the `.clickfix/`
+coordination docs: ledger, integrator role, owner-decision queue, recovery board). See its
+[README](templates/orchestration/README.md) for the pattern and setup. Entirely optional —
+the core `/clickfix` loop needs none of it.
+
 ## API
 
 - `GET /toolbar.js` — the injected toolbar
