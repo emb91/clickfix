@@ -219,9 +219,19 @@ Prefer to drive it yourself without the command? The mailbox is just a file — 
 
 ## Diagnose-only mode (/clickfix-doc)
 
-Sometimes you don't want the agent to *change* anything yet — you want it to **investigate
-and write up** each ticket so you (or a reviewer, or a separate implementation agent) can
-decide what to do. That's `/clickfix-doc`.
+`/clickfix` fixes things on the spot. `/clickfix-doc` is its **diagnose-don't-touch**
+sibling: it works out the root cause of each ticket and writes it up, but **never changes
+code**. It exists for the times when "just fix it" isn't what you want:
+
+- **Triage before you trust it.** Read the agent's root-cause analysis and proposed fix
+  *before* any edit lands — good for unfamiliar or risky areas of the codebase.
+- **Turn feedback into a backlog.** Convert a pile of clicked-in tickets into one structured
+  doc a teammate — or another agent — can pick up and implement later.
+- **Separate "find" from "fix."** Run a diagnosis sweep across the whole queue in one go,
+  then decide what to implement, in what order, and by whom. (This is the building block if
+  you want to orchestrate: one pass diagnoses into the doc, others implement from it.)
+- **Surface decisions, not guesses.** When a fix needs a product call (A vs B), you get the
+  options written down instead of a guess committed to your branch.
 
 ```
 /clickfix-doc
