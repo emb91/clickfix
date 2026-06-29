@@ -67,17 +67,24 @@ Put it in whatever file renders on every page (your root layout / template) — 
 
 ## Daily use
 
-1. **Start the sidecar** in your project and leave it running:
+> **Run everything from your project folder.** clickfix stores tickets relative to where you
+> launch it (in `<that folder>/.feedback/`), and `/clickfix` reads them relative to where
+> Claude Code is rooted. So the sidecar **and** the Claude Code session must both be started
+> from your project's root directory — otherwise they won't see the same tickets.
+
+1. **Start the sidecar from your project root** and leave it running:
    ```bash
-   clickfix          # serves http://localhost:7331  (override with --port / --dir)
+   cd /path/to/your/project       # ← important: cd into your project first
+   clickfix                        # serves http://localhost:7331  (override with --port / --dir)
    ```
-   (Your dev server runs as normal alongside it.)
+   (Your dev server runs as normal alongside it. Alternatively, run from anywhere with
+   `clickfix --dir /path/to/your/project`.)
 2. **Leave feedback in the browser.** A **✦ Feedback** button appears bottom-right (drag it
    anywhere — it remembers). Click it → click any element → choose **✦ UI tweak** or
    **🪲 Fix behaviour** → type what should change → **Send**. The button shows a
    **`N notes → /clickfix`** badge of how many are waiting.
-3. **Work the tickets in Claude Code.** Open a Claude Code session **in the same project
-   folder** and run one of:
+3. **Work the tickets in Claude Code.** Open a Claude Code session **from that same project
+   folder** (`cd /path/to/your/project && claude`) and run one of:
    - **`/clickfix`** — works each ticket: makes UI tweaks directly, diagnoses behaviour bugs
      first (and checks with you before changing logic), commits each fix, and resolves it.
      You clarify by just chatting.
