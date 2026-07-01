@@ -268,13 +268,20 @@ opens PRs, with a human owner making product calls — scaffold it into any proj
 command:
 
 ```bash
-clickfix orchestrate      # drops AGENTS.md + .clickfix/ coordination docs into the project
+clickfix orchestrate      # scaffolds AGENTS.md + .clickfix/ docs, auto-detects your stack
 ```
 
-Then run **`/clickfix-orchestrate`** in a Claude Code session rooted there — the agent reads
-`.clickfix/integrator_role.md` and runs the loop (reconcile from tools → launch gate + WIP cap
-→ assign one agent per ticket → audit → PR → owner-decision queue → recovery board). The
-starter templates live in [`templates/orchestration/`](templates/orchestration/); see its
+It drops `AGENTS.md` at the repo root and the `.clickfix/` coordination docs, gitignores
+`.clickfix/`, and **auto-fills what it can detect** — your check commands (from lockfiles:
+pnpm/npm/yarn/bun, TypeScript, Python/pytest, Go, Rust, Supabase) into `AGENTS.md`, and the
+owner + repo + checkout path (from git) into `integrator_role.md`. It's idempotent and never
+overwrites files you've edited, so it's safe to re-run.
+
+Then run **`/clickfix-orchestrate`** in a Claude Code session rooted there. On first run it
+**finishes setup with you** — confirms the detected checks and asks where tickets come from —
+then runs the loop (reconcile from tools → launch gate + WIP cap → assign one agent per ticket
+→ audit → PR → owner-decision queue → recovery board). The starter templates live in
+[`templates/orchestration/`](templates/orchestration/); see its
 [README](templates/orchestration/README.md) for the pattern. Entirely optional — the core
 `/clickfix` loop needs none of it.
 

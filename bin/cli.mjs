@@ -3,6 +3,7 @@ import { startServer } from "../server.mjs"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import os from "node:os"
+import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -10,6 +11,125 @@ const args = process.argv.slice(2)
 function opt(name, def) {
   const i = args.indexOf(name)
   return i >= 0 && args[i + 1] ? args[i + 1] : def
+}
+
+async function pathExists(p) {
+  try { await fs.access(p); return true } catch { return false }
+}
+async function readText(p) {
+  try { return await fs.readFile(p, "utf8") } catch { return null }
+}
+
+// Best-effort stack detection from lockfiles/config, so `clickfix orchestrate` can pre-fill
+// AGENTS.md's check commands instead of leaving the user an "EDIT THIS" placeholder.
+async function detectStack(dir) {
+  const has = (f) => pathExists(path.join(dir, f))
+  const stack = []   // human-readable stack bits for the summary line
+  const checks = []  // { cmd, why } — commands that should pass before a PR
+  const notes = []   // freeform guidance (migrations, monorepo caveats, …)
+
+  // Node / JS / TS
+  const pkgRaw = await readText(path.join(dir, "package.json"))
+  if (pkgRaw) {
+    let pkg = {}
+    try { pkg = JSON.parse(pkgRaw) } catch {}
+    let pm = "npm"
+    if (await has("pnpm-lock.yaml")) pm = "pnpm"
+    else if (await has("yarn.lock")) pm = "yarn"
+    else if (await has("bun.lockb")) pm = "bun"
+    const isMono = !!pkg.workspaces || (await has("pnpm-workspace.yaml"))
+    const ts = await has("tsconfig.json")
+    stack.push(`${ts ? "TypeScript" : "JS"}/${pm}${isMono ? " (monorepo)" : ""}`)
+    const scripts = pkg.scripts || {}
+    const run = pm === "npm" ? "npm run" : `${pm} run`
+    for (const s of ["typecheck", "lint", "test", "build"]) {
+      if (scripts[s]) checks.push({ cmd: `${run} ${s}`, why: `package.json script "${s}"` })
+    }
+    if (!scripts.typecheck && ts) {
+      checks.push({ cmd: `npx tsc --noEmit`, why: `tsconfig.json present, no typecheck script` })
+    }
+    if (isMono) {
+      notes.push("Monorepo detected — root scripts may need a package filter " +
+        `(e.g. \`${pm} --filter <pkg> test\`); adjust per package.`)
+    }
+  }
+
+  // Python
+  const pyproject = await readText(path.join(dir, "pyproject.toml"))
+  if (pyproject !== null || (await has("setup.py")) || (await has("requirements.txt"))) {
+    stack.push("Python")
+    let pytest = (await has("pytest.ini")) || (await has("tests"))
+    if (!pytest && pyproject) pytest = /\[tool\.pytest/.test(pyproject)
+    if (pytest) checks.push({ cmd: `pytest`, why: `pytest config / tests dir` })
+  }
+
+  // Go / Rust
+  if (await has("go.mod")) { stack.push("Go"); checks.push({ cmd: `go test ./...`, why: `go.mod` }) }
+  if (await has("Cargo.toml")) { stack.push("Rust"); checks.push({ cmd: `cargo test`, why: `Cargo.toml` }) }
+
+  // Supabase
+  if (await has("supabase/migrations")) {
+    notes.push("Supabase migrations under `supabase/migrations/` — add forward migrations; " +
+      "never rewrite an applied one. Supabase MCP can run remote SQL/history if the CLI is missing.")
+  } else if (await has("supabase")) {
+    notes.push("Supabase project detected (`supabase/`).")
+  }
+
+  return { stack, checks, notes }
+}
+
+// Render a detected-stack section and splice it into AGENTS.md just after the H1.
+function agentsWithDetected(tpl, d) {
+  const out = ["## Detected stack — auto-filled by `clickfix orchestrate` (verify, then trim)", ""]
+  out.push(d.stack.length
+    ? `Detected: ${d.stack.join(" · ")}.`
+    : "No common stack markers found — fill in your check commands below.")
+  out.push("")
+  if (d.checks.length) {
+    out.push("Checks that should pass before a PR (confirm these match how you actually run them):")
+    for (const c of d.checks) out.push(`- \`${c.cmd}\`  — ${c.why}`)
+    out.push("")
+  }
+  for (const n of d.notes) out.push(`- ${n}`)
+  if (d.notes.length) out.push("")
+  out.push("> Auto-detected from lockfiles/config. Verify the commands, then delete this note.")
+
+  const lines = tpl.split("\n")
+  const h1 = lines.findIndex((l) => /^#\s/.test(l))
+  const at = h1 >= 0 ? h1 + 1 : 0
+  lines.splice(at, 0, "", ...out)
+  return lines.join("\n")
+}
+
+// Read a git config value from the project, or null if git/config isn't available.
+function gitConfig(dir, key) {
+  try {
+    return execFileSync("git", ["-C", dir, "config", "--get", key], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim() || null
+  } catch { return null }
+}
+// "owner/repo" from a github remote URL (ssh or https), or null.
+function parseRepo(url) {
+  const m = url && url.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/)
+  return m ? m[1] : null
+}
+// Fill integrator_role.md with what we can know from git: owner, shared-checkout path, repo.
+function fillIntegratorRole(tpl, { owner, checkout, repo }) {
+  const t = tpl.split("<shared checkout path>").join(checkout)
+  const hdr = ["> Auto-filled by `clickfix orchestrate` (adjust if wrong):",
+    `> - Owner: ${owner || "set your name"}`,
+    `> - Shared checkout: ${checkout}`]
+  if (repo) {
+    hdr.push(`> - GitHub repo: ${repo} — write PR links as ` +
+      `[PR #NN](https://github.com/${repo}/pull/NN) so they're clickable.`)
+  }
+  const lines = t.split("\n")
+  const h1 = lines.findIndex((l) => /^#\s/.test(l))
+  const at = h1 >= 0 ? h1 + 1 : 0
+  lines.splice(at, 0, "", ...hdr)
+  return lines.join("\n")
 }
 
 if (args.includes("-h") || args.includes("--help")) {
@@ -69,6 +189,10 @@ if (args[0] === "orchestrate") {
   const clickfixDir = path.join(projectDir, ".clickfix")
   try {
     await fs.mkdir(clickfixDir, { recursive: true })
+    // What we can know without asking: stack (for AGENTS.md checks) + owner/repo (for integrator_role.md).
+    const detected = await detectStack(projectDir)
+    const owner = gitConfig(projectDir, "user.name")
+    const repo = parseRepo(gitConfig(projectDir, "remote.origin.url"))
     const files = (await fs.readdir(srcDir)).filter((f) => f.endsWith(".md"))
     let created = 0
     let kept = 0
@@ -77,15 +201,30 @@ if (args[0] === "orchestrate") {
       // AGENTS.md is house rules read from the repo root; the rest are coordination docs.
       const dest = f === "AGENTS.md" ? path.join(projectDir, f) : path.join(clickfixDir, f)
       const rel = path.relative(projectDir, dest)
-      try {
-        await fs.access(dest)
+      if (await pathExists(dest)) {
         console.log(`clickfix: kept (already exists) ${rel}`)
         kept++
-      } catch {
-        await fs.copyFile(path.join(srcDir, f), dest)
-        console.log(`clickfix: created ${rel}`)
-        created++
+        continue
       }
+      const srcPath = path.join(srcDir, f)
+      if (f === "AGENTS.md") {
+        await fs.writeFile(dest, agentsWithDetected(await fs.readFile(srcPath, "utf8"), detected))
+      } else if (f === "integrator_role.md") {
+        await fs.writeFile(dest, fillIntegratorRole(await fs.readFile(srcPath, "utf8"), {
+          owner, checkout: projectDir, repo,
+        }))
+      } else {
+        await fs.copyFile(srcPath, dest)
+      }
+      console.log(`clickfix: created ${rel}`)
+      created++
+    }
+    if (detected.stack.length) {
+      console.log(`clickfix: detected ${detected.stack.join(" · ")} — pre-filled AGENTS.md checks`)
+    }
+    if (owner || repo) {
+      console.log(`clickfix: pre-filled integrator_role.md (` +
+        [owner && `owner ${owner}`, repo && `repo ${repo}`].filter(Boolean).join(", ") + `)`)
     }
     // Ensure .clickfix/ is gitignored (idempotent — matches ".clickfix" or ".clickfix/").
     const giPath = path.join(projectDir, ".gitignore")
@@ -104,10 +243,9 @@ if (args[0] === "orchestrate") {
     }
     console.log(`\nclickfix: orchestration scaffolded (${created} created, ${kept} kept) in ${projectDir}`)
     console.log(`Next:`)
-    console.log(`  1. Edit AGENTS.md for your stack (check commands, migrations, don't-touch zones).`)
-    console.log(`  2. Skim .clickfix/integrator_role.md and set the owner name + shared checkout path.`)
-    console.log(`  3. In a Claude Code session rooted here, run:  /clickfix-orchestrate`)
-    console.log(`     (the agent reads .clickfix/integrator_role.md and runs the loop).`)
+    console.log(`  1. Skim AGENTS.md — check commands were auto-detected; verify/trim and add don't-touch zones.`)
+    console.log(`  2. In a Claude Code session rooted here, run:  /clickfix-orchestrate`)
+    console.log(`     (it confirms setup with you — ticket source + any gaps — then runs the loop).`)
   } catch (err) {
     console.error("clickfix: orchestrate failed:", err)
     process.exit(1)
