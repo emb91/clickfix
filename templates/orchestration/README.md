@@ -26,6 +26,7 @@ these files are the scaffolding.
 toolbar → tickets → /clickfix-doc → clickfix_rootcause_bugs.md (ledger)
                                           │
                           orchestrator (integrator_role.md)
+                          ├─ launch gate + WIP cap    (agent_launch_gate.md)
                           ├─ assigns 1 sub-agent per ticket/theme (own worktree)
                           ├─ audits results (+ optional auditor agent) → opens PRs
                           ├─ owner_decision_queue.md  (needs a human call)
@@ -38,21 +39,31 @@ toolbar → tickets → /clickfix-doc → clickfix_rootcause_bugs.md (ledger)
 | --- | --- | --- |
 | `AGENTS.md` | your repo **root** | House rules every agent follows: one-PR-per-theme, worktree completion protocol, your project's migration/check conventions. |
 | `clickfix_rootcause_bugs.md` | `.clickfix/` | The shared ledger. `/clickfix-doc` appends a diagnosis per ticket; the orchestrator reads it each cycle. |
-| `integrator_role.md` | `.clickfix/` | The orchestrator's standing instructions — how to assign, audit, report, and never silently close a diagnosis-only ticket. |
+| `integrator_role.md` | `.clickfix/` | The orchestrator's standing instructions — how to assign, audit, report, reconcile state from tools, and never silently close a diagnosis-only ticket. |
+| `agent_launch_gate.md` | `.clickfix/` | Pre-launch checklist + WIP cap (max 3 impl + 1 audit agent). The guardrail that stops the fleet ballooning into dozens of un-audited agents. |
 | `owner_decision_queue.md` | `.clickfix/` | Tickets that need *your* product call before code is written. Keeps decisions from getting lost. |
 | `recovery_board.md` | `.clickfix/` | Live state: active agents, PRs awaiting checks, audit blockers, and leftover branches/worktrees/stashes to clean up. |
 
 ## Setup
 
-1. Copy `AGENTS.md` to your repo root and edit it for your stack (it's read by Claude Code
-   and most coding agents automatically).
-2. Copy the other four files into your project's `.clickfix/` folder.
-3. **Gitignore `.clickfix/`** — these are local working/coordination docs, not source:
-   ```
-   echo ".clickfix/" >> .gitignore
-   ```
-4. Point your orchestrator agent at `.clickfix/integrator_role.md` as its standing brief
-   (e.g. paste it in, or tell the agent to read and follow it), and let it run the loop.
+**One command** (recommended) — from your project root:
+
+```bash
+clickfix orchestrate
+```
+
+That copies `AGENTS.md` to your repo root and the coordination docs into `.clickfix/`
+(never overwriting files you've already edited), and gitignores `.clickfix/`. Then, in a
+Claude Code session rooted in the project, run **`/clickfix-orchestrate`** — the agent reads
+`.clickfix/integrator_role.md` and runs the loop. (`/clickfix-orchestrate` ships with
+`clickfix install`, alongside `/clickfix` and `/clickfix-doc`.)
+
+**By hand**, if you prefer: copy `AGENTS.md` to your repo root, copy the other files into
+`.clickfix/`, `echo ".clickfix/" >> .gitignore`, and point your orchestrator agent at
+`.clickfix/integrator_role.md` as its standing brief.
+
+Either way, edit `AGENTS.md` for your stack (check commands, migrations, don't-touch zones)
+and set the owner name + shared-checkout path in `integrator_role.md`.
 
 These are **starting points** — read them, delete what you don't want, and tune the rules
-(audit strictness, reporting cadence, PR conventions) to how you actually work.
+(audit strictness, WIP cap, reporting cadence, PR conventions) to how you actually work.

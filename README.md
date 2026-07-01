@@ -48,7 +48,7 @@ a pile of feedback while you click around, then action it all in Claude Code whe
 
 ```bash
 npm i -g github:emb91/clickfix     # installs the `clickfix` command (not on npm yet — from GitHub)
-clickfix install                    # adds the /clickfix and /clickfix-doc commands to ~/.claude/commands
+clickfix install                    # adds /clickfix, /clickfix-doc and /clickfix-orchestrate to ~/.claude/commands
 ```
 
 `clickfix install` only needs running once — the commands then work in **every** project.
@@ -264,11 +264,19 @@ Tip: add `.clickfix/` to your project's `.gitignore` — it's a working doc, not
 
 If you want to go beyond "click → `/clickfix`" and run a **fleet of agents off the
 backlog** — an orchestrator that hands each ticket to a sub-agent, audits the work, and
-opens PRs, with a human owner making product calls — there are starter templates in
-[`templates/orchestration/`](templates/orchestration/) (an `AGENTS.md` + the `.clickfix/`
-coordination docs: ledger, integrator role, owner-decision queue, recovery board). See its
-[README](templates/orchestration/README.md) for the pattern and setup. Entirely optional —
-the core `/clickfix` loop needs none of it.
+opens PRs, with a human owner making product calls — scaffold it into any project in one
+command:
+
+```bash
+clickfix orchestrate      # drops AGENTS.md + .clickfix/ coordination docs into the project
+```
+
+Then run **`/clickfix-orchestrate`** in a Claude Code session rooted there — the agent reads
+`.clickfix/integrator_role.md` and runs the loop (reconcile from tools → launch gate + WIP cap
+→ assign one agent per ticket → audit → PR → owner-decision queue → recovery board). The
+starter templates live in [`templates/orchestration/`](templates/orchestration/); see its
+[README](templates/orchestration/README.md) for the pattern. Entirely optional — the core
+`/clickfix` loop needs none of it.
 
 ## API
 
