@@ -53,17 +53,24 @@ clickfix orchestrate
 ```
 
 That copies `AGENTS.md` to your repo root and the coordination docs into `.clickfix/`
-(never overwriting files you've already edited), and gitignores `.clickfix/`. Then, in a
-Claude Code session rooted in the project, run **`/clickfix-orchestrate`** — the agent reads
-`.clickfix/integrator_role.md` and runs the loop. (`/clickfix-orchestrate` ships with
-`clickfix install`, alongside `/clickfix` and `/clickfix-doc`.)
+(never overwriting files you've already edited), and gitignores `.clickfix/`. It also
+**auto-fills what it can detect**, so you're not left staring at placeholders:
+
+- **`AGENTS.md`** — detects your stack from lockfiles/config (pnpm/npm/yarn/bun, TypeScript,
+  Python/pytest, Go, Rust, Supabase migrations) and pre-fills the "checks that must pass
+  before a PR" commands.
+- **`integrator_role.md`** — fills the owner (from `git config user.name`), the shared-checkout
+  path, and the GitHub repo (from `origin`) so PR links come out clickable.
+
+Then, in a Claude Code session rooted in the project, run **`/clickfix-orchestrate`**. On its
+**first run it finishes setup *with you*** — confirms the auto-detected check commands, fixes
+the owner/repo if wrong, and asks the one thing it can't detect (**where tickets come from** —
+toolbar, `BACKLOG.md`, GitHub issues, …) — then runs the loop. (`/clickfix-orchestrate` ships
+with `clickfix install`, alongside `/clickfix` and `/clickfix-doc`.)
 
 **By hand**, if you prefer: copy `AGENTS.md` to your repo root, copy the other files into
-`.clickfix/`, `echo ".clickfix/" >> .gitignore`, and point your orchestrator agent at
-`.clickfix/integrator_role.md` as its standing brief.
-
-Either way, edit `AGENTS.md` for your stack (check commands, migrations, don't-touch zones)
-and set the owner name + shared-checkout path in `integrator_role.md`.
+`.clickfix/`, `echo ".clickfix/" >> .gitignore`, fill the check commands + owner/checkout path
+yourself, and point your orchestrator agent at `.clickfix/integrator_role.md`.
 
 These are **starting points** — read them, delete what you don't want, and tune the rules
 (audit strictness, WIP cap, reporting cadence, PR conventions) to how you actually work.

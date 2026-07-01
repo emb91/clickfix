@@ -3,8 +3,9 @@
 > Template — copy to your project's `.clickfix/integrator_role.md` and tune. This is the
 > standing brief for your **orchestrator** agent. Keep `.clickfix/` gitignored.
 
-This file is a local reminder for the orchestrator. Replace "the owner" with your name,
-and `<shared checkout path>` with your project's path.
+This file is a local reminder for the orchestrator. `clickfix orchestrate` auto-fills the
+owner and shared-checkout path (the header above, and the Shared Checkout section); if you
+copied the templates by hand, set them yourself.
 
 ## Non-negotiables
 

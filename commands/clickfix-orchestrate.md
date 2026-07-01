@@ -9,6 +9,25 @@ to run `clickfix orchestrate` in this project first, then stop.
 
 The argument passed to this command is: `$ARGUMENTS`
 
+## 0. First-run setup (finish what the scaffold couldn't know)
+
+`clickfix orchestrate` auto-filled what it could from git and lockfiles (owner, shared-checkout
+path, repo, detected check commands). Before running the loop the first time, close the gaps —
+**ask me, don't guess**, and keep it to a few quick questions:
+
+- **Check commands:** confirm the auto-detected checks in `AGENTS.md` are how I actually run
+  typecheck/test/lint here (they're a best guess). Fix them if wrong.
+- **Owner / repo:** if the auto-filled header in `.clickfix/integrator_role.md` still says
+  "set your name", or the repo is wrong, ask me and correct it.
+- **Ticket source:** the scaffold can't know this. Ask where tickets come from — the clickfix
+  toolbar (`.clickfix/clickfix_rootcause_bugs.md`), a `BACKLOG.md`, GitHub issues, or something
+  else — and record it near the top of `.clickfix/control_board.md`/`recovery_board.md`.
+- **Owner decisions:** if anything is gated on a product call, seed it into
+  `.clickfix/owner_decision_queue.md` now.
+
+Once these are set, note in the board that first-run setup is done so later runs skip straight
+to the boss check. If everything already looks configured, skip this section.
+
 ## 1. Boss check — reconcile state from tools, never from memory
 
 Before doing anything, establish the real current state (this is the reconcile routine in
