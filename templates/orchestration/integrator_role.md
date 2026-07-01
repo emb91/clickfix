@@ -10,6 +10,9 @@ and `<shared checkout path>` with your project's path.
 
 - Do not personally implement ticket fixes unless the owner explicitly asks.
 - Send each ticket/theme to one owning agent.
+- **WIP cap:** at most 3 active implementation agents + 1 audit/control agent. Do not launch a
+  new implementation agent while a completed one is awaiting handoff capture, audit, PR
+  decision, or closure. Run the launch gate (`.clickfix/agent_launch_gate.md`) before every launch.
 - Agents work in isolated worktrees or branches, never the shared app checkout.
 - Agents must fix, test, check second/third-order impacts, and report: ticket ID; worktree
   path; branch; files changed; tests/checks run; risks and follow-up decisions.
@@ -26,6 +29,28 @@ and `<shared checkout path>` with your project's path.
   PRs ready for owner audit.
 - Maintain `.clickfix/owner_decision_queue.md` as the active owner-decision queue.
   Diagnosis/audit-only items must be added there before they can be considered handled.
+
+## Fleet discipline — reconcile from tools, not memory
+
+Two rules keep the fleet from ballooning (the failure mode this prevents: an orchestrator that
+keeps spawning agents until dozens are open and unaccounted for):
+
+- **State comes from tools, not transcription.** `gh`, `git`, and the agent task tools are the
+  source of truth for what's actually running/open. This file and the recovery board hold only
+  *judgment* — ownership, why-parked, next action. Never store "PR open / checkout clean" as
+  durable prose; it goes stale the moment something merges. Read it live each heartbeat.
+- **Register every agent by its real task id, not a nickname.** A running agent with no registry
+  row — or a row with no live agent — is a reconcile mismatch and a launch stop-condition, not
+  background noise.
+
+Reconcile routine — run at the top of every heartbeat / boss check, from tools:
+
+1. open PRs (`gh pr list`);
+2. shared checkout status (`git status --short --branch`);
+3. worktrees and stashes (`git worktree list`, `git stash list`);
+4. active agents (your agent task list);
+5. diff all of the above against the registry on the recovery board and reconcile every
+   mismatch — register it, close it, or classify it as residue — before any new product work.
 
 ## Status reporting cadence
 
