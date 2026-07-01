@@ -37,7 +37,7 @@ toolbar → tickets → /clickfix-doc → clickfix_rootcause_bugs.md (ledger)
 
 | File | Goes where | What it does |
 | --- | --- | --- |
-| `AGENTS.md` | your repo **root** | House rules every agent follows: one-PR-per-theme, worktree completion protocol, your project's migration/check conventions. |
+| `AGENTS.md` | your repo **root** | House rules every agent follows: one-task-one-branch, commit-only-your-files, **branch & merge safety** (verify a PR isn't already merged before pushing — they merge out-of-band), worktree completion protocol, and your project's migration/check conventions. |
 | `clickfix_rootcause_bugs.md` | `.clickfix/` | The shared ledger. `/clickfix-doc` appends a diagnosis per ticket; the orchestrator reads it each cycle. |
 | `integrator_role.md` | `.clickfix/` | The orchestrator's standing instructions — how to assign, audit, report, reconcile state from tools, and never silently close a diagnosis-only ticket. |
 | `agent_launch_gate.md` | `.clickfix/` | Pre-launch checklist + WIP cap (max 3 impl + 1 audit agent). The guardrail that stops the fleet ballooning into dozens of un-audited agents. |
@@ -71,6 +71,14 @@ with `clickfix install`, alongside `/clickfix` and `/clickfix-doc`.)
 **By hand**, if you prefer: copy `AGENTS.md` to your repo root, copy the other files into
 `.clickfix/`, `echo ".clickfix/" >> .gitignore`, fill the check commands + owner/checkout path
 yourself, and point your orchestrator agent at `.clickfix/integrator_role.md`.
+
+### Running it continuously (optional)
+
+The loop runs on demand each time you invoke `/clickfix-orchestrate`. For hands-off operation
+you can schedule two recurring checks — a ~10-min **backlog poll** and a ~30-min **boss check**
+(reconcile + launch gate) — with whatever scheduler you have (Claude Code scheduled tasks, cron,
+or a `/loop` runner). `clickfix orchestrate` doesn't create these; `/clickfix-orchestrate` offers
+to set them up on first run. See "Scheduling the loop" in `integrator_role.md`.
 
 These are **starting points** — read them, delete what you don't want, and tune the rules
 (audit strictness, WIP cap, reporting cadence, PR conventions) to how you actually work.
