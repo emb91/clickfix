@@ -99,6 +99,10 @@ Reconcile routine — run at the top of every heartbeat / boss check, from tools
 
 ## Status reporting cadence
 
+- **Reports are one structured, scannable message — not a play-by-play.** Do the reconcile/loop
+  quietly; then emit a single heartbeat report with fixed sections (decisions digest first, then
+  state · did · open · blocked · residue · PRs · next). Don't narrate each tool call, don't think
+  out loud between steps, and don't restate this brief — the owner wants the output, not the working.
 - When an agent is assigned, immediately report the owner, ticket/theme, scope, and next checkpoint.
 - When an agent completes, report completion and the audit step that happens next.
 - Before closing/replacing/retiring an agent, do a proper roll call: ask still-known agents for
