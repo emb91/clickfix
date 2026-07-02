@@ -46,6 +46,12 @@ Tell me which ticket you claimed (id + instruction) before touching code.
     ```
     curl -s -X PATCH http://localhost:7331/feedback -H 'Content-Type: application/json' -d '{"id":"<id>","status":"open"}'
     ```
+- **kind: "question"** — a query or note, NOT a change request ("what's the $ cap on this?").
+  **Do NOT edit code.** Investigate the codebase (read the relevant `source_file` / `component`,
+  trace the data/logic) and **answer the question** in chat — concrete, with `file:line`
+  references. If it's just a note with nothing to answer, acknowledge it. If answering surfaces
+  a real bug or a needed change, say so and ask whether to spin it into a `ui`/`behavior` fix —
+  don't silently start editing. Then resolve the ticket (documented/answered = done).
 
 ## 3. Commit the fix
 
