@@ -56,6 +56,14 @@ The flag protocol across the three roles:
   records the ruling, and writes back to the ticket exactly two things: the decision, and the
   flag `ready for orchestrator`.
 
+Questions are a **third lane**, separate from decisions. A `kind: question` ("❓ Ask") ticket is
+*answered*, not built: `/clickfix-questions` owns them — it spawns a read-only research subagent,
+gives the owner an ELI5 answer, and logs to its own `.clickfix/clickfix_questions.md` (separate
+from this bug ledger). The orchestrator **skips `question` tickets** just like `decision required`.
+A question reaches the orchestrator only if the owner rejects the answer and it's escalated into a
+new `clickfix_rootcause_bugs.md` ticket. Rhythm difference: a decision *waits* on the owner
+(nags in the digest); a question *resolves on answer* (no lingering queue).
+
 - **Every owner update opens with a Decisions digest** — before status, PRs, anything. List
   EVERY open decision, oldest first, each with: id, one-line question, your recommendation +
   default, the ticket(s) it blocks, and its age in cycles. If there are none, say "No open

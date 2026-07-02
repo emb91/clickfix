@@ -48,7 +48,7 @@ a pile of feedback while you click around, then action it all in Claude Code whe
 
 ```bash
 npm i -g github:emb91/clickfix     # installs the `clickfix` command (not on npm yet — from GitHub)
-clickfix install                    # adds /clickfix, /clickfix-doc, /clickfix-orchestrate, /clickfix-decisions to ~/.claude/commands
+clickfix install                    # adds /clickfix, /clickfix-doc, /clickfix-orchestrate, /clickfix-decisions, /clickfix-questions
 ```
 
 `clickfix install` only needs running once — the commands then work in **every** project.
@@ -301,6 +301,14 @@ diagnosis agent flags it `decision required`. The orchestrator **skips** those. 
 surface them to you (silent when there are none); once you rule, it flags the ticket
 `ready for orchestrator` and the orchestrator picks it up. This keeps owner decisions from
 getting lost without stalling the build loop.
+
+**Questions you ask (`❓ Ask` tickets, separate lane).** An `❓ Ask` note is a *question about the
+code*, not a change. The orchestrator **skips** those too. Run **`/clickfix-questions`** — it
+claims the question, spawns a read-only research subagent, gives you an **ELI5 answer**, logs the
+Q&A to its own `.clickfix/clickfix_questions.md`, and closes it. A satisfying answer never touches
+the orchestrator. Only if you reject the answer ("no, this is a real problem because…") does it
+append a ticket to `clickfix_rootcause_bugs.md` — opening new work for the orchestrator. (Decisions
+*wait* on you; questions *resolve on answer* — hence separate threads.)
 
 The starter templates live in [`templates/orchestration/`](templates/orchestration/); see its
 [README](templates/orchestration/README.md) for the pattern. Entirely optional — the core
