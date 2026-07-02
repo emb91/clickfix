@@ -158,7 +158,7 @@ Requires Claude Code (the work happens via the slash commands).`)
 
 // `clickfix install` — drop the clickfix slash commands into ~/.claude/commands so
 // they're available in Claude Code from any project. Installs every command shipped
-// in the package's commands/ dir (currently /clickfix and /clickfix-doc).
+// in the package's commands/ dir (/clickfix, /clickfix-doc, /clickfix-orchestrate).
 if (args[0] === "install") {
   const srcDir = path.join(here, "..", "commands")
   const destDir = path.join(os.homedir(), ".claude", "commands")
@@ -170,8 +170,9 @@ if (args[0] === "install") {
       console.log(`clickfix: installed /${f.replace(/\.md$/, "")} → ${path.join(destDir, f)}`)
     }
     console.log(`  In a Claude Code session in your project:`)
-    console.log(`    /clickfix      — fix each ticket and commit it`)
-    console.log(`    /clickfix-doc  — diagnose each ticket into .clickfix/clickfix_rootcause_bugs.md (no code changes)`)
+    console.log(`    /clickfix              — fix each ticket and commit it`)
+    console.log(`    /clickfix-doc          — diagnose each ticket into .clickfix/clickfix_rootcause_bugs.md (no code changes)`)
+    console.log(`    /clickfix-orchestrate  — run the multi-agent orchestrator loop (after \`clickfix orchestrate\`)`)
   } catch (err) {
     console.error("clickfix: install failed:", err)
     process.exit(1)
@@ -196,6 +197,8 @@ if (args[0] === "orchestrate") {
     const files = (await fs.readdir(srcDir)).filter((f) => f.endsWith(".md"))
     let created = 0
     let kept = 0
+    let filledAgents = false
+    let filledRole = false
     for (const f of files) {
       if (f === "README.md") continue // the templates README is docs, not a project file
       // AGENTS.md is house rules read from the repo root; the rest are coordination docs.
@@ -209,20 +212,22 @@ if (args[0] === "orchestrate") {
       const srcPath = path.join(srcDir, f)
       if (f === "AGENTS.md") {
         await fs.writeFile(dest, agentsWithDetected(await fs.readFile(srcPath, "utf8"), detected))
+        filledAgents = true
       } else if (f === "integrator_role.md") {
         await fs.writeFile(dest, fillIntegratorRole(await fs.readFile(srcPath, "utf8"), {
           owner, checkout: projectDir, repo,
         }))
+        filledRole = true
       } else {
         await fs.copyFile(srcPath, dest)
       }
       console.log(`clickfix: created ${rel}`)
       created++
     }
-    if (detected.stack.length) {
+    if (filledAgents && detected.stack.length) {
       console.log(`clickfix: detected ${detected.stack.join(" · ")} — pre-filled AGENTS.md checks`)
     }
-    if (owner || repo) {
+    if (filledRole && (owner || repo)) {
       console.log(`clickfix: pre-filled integrator_role.md (` +
         [owner && `owner ${owner}`, repo && `repo ${repo}`].filter(Boolean).join(", ") + `)`)
     }
