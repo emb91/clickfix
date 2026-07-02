@@ -17,7 +17,8 @@ The argument passed to this command is: `$ARGUMENTS`
 
 ## 1. Scan for decisions
 
-- Read the ticket source(s): `.clickfix/clickfix_rootcause_bugs.md` and the project's backlog.
+- Read the clickfix ticket ledger `.clickfix/clickfix_rootcause_bugs.md` (the default ticket
+  doc — **separate from any product backlog**).
 - Find every ticket flagged **`decision required`** (a diagnosis agent sets this when a ticket
   needs a product/owner call), plus anything already in `owner_decision_queue.md` still awaiting
   the owner.
