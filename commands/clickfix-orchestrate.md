@@ -9,6 +9,13 @@ to run `clickfix orchestrate` in this project first, then stop.
 
 The argument passed to this command is: `$ARGUMENTS`
 
+## Output discipline (read first)
+
+Do §0–§2 with **minimal narration** — no step-by-step "let me check / actually / wait" play-by-play,
+no restating this brief, no thinking out loud between tool calls. Run your tools quietly. The
+**only** thing you print to me is the single structured heartbeat report in §3, in the fixed format
+below — one report per run, the same shape every time. Scannable, not a stream of consciousness.
+
 ## 0. First-run setup (finish what the scaffold couldn't know)
 
 `clickfix orchestrate` auto-filled what it could from git and lockfiles (owner, shared-checkout
@@ -69,18 +76,29 @@ true, reconcile first and do not start new product work.**
 - If you hit something that needs a product decision, flag the ticket `decision required` and
   leave it for the steward — do NOT guess, do NOT assign, do NOT silently close it.
 
-## 3. Keep the board fresh + report
+## 3. The heartbeat report — the only thing you print
 
-- After any launch, handoff, audit, PR, merge, blocker, or residue discovery, update the
-  live board so it never shows stale state (e.g. "PR open" after merge).
-- If a ticket/theme was named in the argument, focus on that one; otherwise run the whole loop.
-- **Open every report with the Decisions digest** (from `.clickfix/owner_decision_queue.md`):
-  every open owner decision, oldest first, with its question, your recommendation + default, the
-  ticket(s) it blocks, and its age in cycles — or "No open decisions." See the decision-steward
-  rules in `integrator_role.md`. This comes first, every time, so decisions never get lost.
-- Then report: closed tickets; open tickets; completed agent work; drift/residue/unknowns; and
-  PRs ready for my audit. **Attach a PR link only once the PR is verified and ready to merge** —
-  in-progress PRs are referred to by number only.
+First keep the live board fresh (after any launch, handoff, audit, PR, merge, blocker, or residue
+discovery — so it never shows stale state like "PR open" after a merge). If the argument named a
+ticket/theme, scope to it; otherwise run the whole loop.
+
+Then emit **exactly one report in this fixed structure** — terse, a few lines per section, no
+preamble:
+
+- **🗳️ Decisions** — the digest, always first: open owner decisions oldest-first (id · question ·
+  recommendation + default · blocks · age), or "No open decisions." (Per the decision-steward
+  rules in `integrator_role.md`.)
+- **State** — open PRs · shared checkout · active agents. One line each, from tools.
+- **Did this heartbeat** — what changed (assigned / audited / merged / synced / pruned), bulleted;
+  "nothing — reconcile only" if idle.
+- **Open / actionable** — ready tickets; flag your single best next pick.
+- **Blocked** — decision-gated or credential-blocked items, one line each.
+- **Residue** — branches / worktrees / stashes to resolve, or "none".
+- **PRs ready for your audit** — clickable `[PR #NN](url)` (merge-ready only), or "none";
+  in-progress PRs by number only.
+- **Next** — the one action you recommend, plus any choice you need from me.
+
+That's the whole message. Don't narrate the reconcile that produced it.
 
 ## Rules
 - Verify from tools/files, not memory. Never mark work done or clean until implementation has
