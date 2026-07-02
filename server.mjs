@@ -151,7 +151,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
             : null,
           selector: typeof body.selector === "string" ? body.selector : null,
           text: typeof body.text === "string" ? body.text.slice(0, 280) : null,
-          kind: body.kind === "behavior" ? "behavior" : "ui",
+          kind: body.kind === "behavior" || body.kind === "question" ? body.kind : "ui",
           instruction: body.instruction.trim(),
         }
         await withLock(() => fs.appendFile(FILE, JSON.stringify(entry) + "\n", "utf8"))
@@ -182,7 +182,7 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       const body = (await readBody(req)) || {}
       const result = await claim({
         id: typeof body.id === "string" && body.id.trim() ? body.id.trim() : undefined,
-        kind: body.kind === "behavior" || body.kind === "ui" ? body.kind : undefined,
+        kind: ["behavior", "ui", "question"].includes(body.kind) ? body.kind : undefined,
       })
       return json(res, 200, result)
     }

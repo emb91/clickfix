@@ -267,7 +267,13 @@
         state.instruction = ""
         state.captured = null
         state.mode = "idle"
-        toast(state.kind === "behavior" ? "Bug logged → /clickfix" : "Sent → /clickfix")
+        toast(
+          state.kind === "behavior"
+            ? "Bug logged → /clickfix"
+            : state.kind === "question"
+            ? "Question logged → /clickfix"
+            : "Sent → /clickfix"
+        )
         refreshCount()
       })
       .catch(function () {
@@ -293,10 +299,10 @@
         : c.component_chain && c.component_chain.length > 1
         ? '<span style="color:#64748b">in ' + esc(c.component_chain.join(" › ")) + "</span>"
         : '<span style="color:#94a3b8">located by selector</span>'
-      var bug = state.kind === "behavior"
+      var k = state.kind
       var seg = function (active) {
         return (
-          "flex:1;border:none;border-radius:6px;padding:6px 8px;font-size:12px;font-weight:600;cursor:pointer;" +
+          "flex:1;border:none;border-radius:6px;padding:6px 6px;font-size:12px;font-weight:600;cursor:pointer;" +
           (active ? "background:#2dd4bf;color:#04211d" : "background:transparent;color:#94a3b8")
         )
       }
@@ -305,8 +311,9 @@
         "width:320px;background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);"
       panel.innerHTML =
         '<div style="display:flex;gap:4px;margin-bottom:8px;background:#020617;border:1px solid #1e293b;border-radius:8px;padding:3px">' +
-        '<button data-pf="kind-ui" style="' + seg(!bug) + '">✦ UI tweak</button>' +
-        '<button data-pf="kind-bug" style="' + seg(bug) + '">🪲 Fix behaviour</button>' +
+        '<button data-pf="kind-ui" style="' + seg(k === "ui") + '">✦ Tweak</button>' +
+        '<button data-pf="kind-bug" style="' + seg(k === "behavior") + '">🪲 Bug</button>' +
+        '<button data-pf="kind-ask" style="' + seg(k === "question") + '">❓ Ask</button>' +
         "</div>" +
         '<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.5">' +
         '<div><span style="color:#64748b">page </span>' +
@@ -318,28 +325,35 @@
         "</div>" +
         (c.text ? '<div style="color:#64748b;margin-top:2px">“' + esc(c.text) + "”</div>" : "") +
         "</div>" +
-        (bug
+        (k === "behavior"
           ? '<div style="font-size:11px;color:#fbbf24;margin-bottom:8px;line-height:1.4">In /clickfix, Claude Code will trace the root cause and propose a fix before changing anything.</div>'
+          : k === "question"
+          ? '<div style="font-size:11px;color:#60a5fa;margin-bottom:8px;line-height:1.4">In /clickfix, Claude Code will answer this from the code — it won’t change anything.</div>'
           : "") +
         '<textarea data-pf="ta" rows="3" placeholder="' +
-        (bug ? "What&#39;s wrong here? (e.g. this shows the wrong company&#39;s data)" : "What should change here?") +
+        (k === "behavior"
+          ? "What&#39;s wrong here? (e.g. this shows the wrong company&#39;s data)"
+          : k === "question"
+          ? "What do you want to know? (e.g. what&#39;s the $ cap on this?)"
+          : "What should change here?") +
         '" style="width:100%;box-sizing:border-box;resize:vertical;background:#020617;color:#e7eaf0;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:13px;outline:none"></textarea>' +
         '<div style="display:flex;gap:8px;margin-top:8px">' +
         '<button data-pf="send" style="flex:1;border:none;border-radius:8px;padding:8px 10px;font-weight:600;cursor:pointer;background:#2dd4bf;color:#04211d">' +
-        (bug ? "Log bug (⌘↵)" : "Send (⌘↵)") +
+        (k === "behavior" ? "Log bug (⌘↵)" : k === "question" ? "Ask (⌘↵)" : "Send (⌘↵)") +
         "</button>" +
         '<button data-pf="repick" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">Re-pick</button>' +
         '<button data-pf="close" style="background:transparent;color:#94a3b8;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;cursor:pointer">✕</button>' +
         "</div>"
       root.appendChild(panel)
-      var setKind = function (k) {
+      var setKind = function (kk) {
         return function () {
-          state.kind = k
+          state.kind = kk
           render()
         }
       }
       panel.querySelector('[data-pf="kind-ui"]').addEventListener("click", setKind("ui"))
       panel.querySelector('[data-pf="kind-bug"]').addEventListener("click", setKind("behavior"))
+      panel.querySelector('[data-pf="kind-ask"]').addEventListener("click", setKind("question"))
       var ta = panel.querySelector('[data-pf="ta"]')
       ta.value = state.instruction
       ta.addEventListener("input", function () {

@@ -163,19 +163,22 @@ frames point at compiled chunks, so only the component name survives. For litera
 selector + text already pin down the code in one grep, so the line is a bonus, not
 a requirement.
 
-## Two kinds of feedback: UI tweak vs Fix behaviour
+## Three kinds of feedback: Tweak · Bug · Ask
 
 When you compose a note, a toggle tags it so `/clickfix` treats it the right way:
 
-- **✦ UI tweak** (default) — a surgical visual/copy edit at the clicked location. The
+- **✦ Tweak** (default, `ui`) — a surgical visual/copy edit at the clicked location. The
   clicked element *is* the edit target.
-- **🪲 Fix behaviour** — for when the symptom you clicked (wrong data, a daft reply) has
+- **🪲 Bug** (`behavior`) — for when the symptom you clicked (wrong data, a daft reply) has
   its cause somewhere upstream. `/clickfix` treats the clicked element only as a starting
   point, traces the data/logic to the **root cause**, **diagnoses first** and checks with
   you before changing logic — instead of papering over it in the UI.
+- **❓ Ask** (`question`) — a query or note, *not* a change request ("what's the $ cap on
+  this?"). `/clickfix` **answers it from the code — no edits.** If the answer surfaces a real
+  bug or needed change, it tells you and asks before turning it into a Tweak/Bug.
 
-`/clickfix` works the two kinds as separate passes, so a CSS tweak is never conflated
-with a logic fix.
+`/clickfix` works the kinds as separate passes, so a CSS tweak, a logic fix, and a question
+are never conflated.
 
 ## Working the notes with /clickfix
 
@@ -306,7 +309,7 @@ The starter templates live in [`templates/orchestration/`](templates/orchestrati
 ## API
 
 - `GET /toolbar.js` — the injected toolbar
-- `POST /feedback` — append a note (`{ instruction, kind, route, source_file, line, component, component_chain, selector, text }`); `kind` is `"ui"` (default) or `"behavior"`
+- `POST /feedback` — append a note (`{ instruction, kind, route, source_file, line, component, component_chain, selector, text }`); `kind` is `"ui"` (default), `"behavior"`, or `"question"`
 - `GET /feedback?status=open` — list notes (`status` ∈ `open` | `in_progress` | `done`)
 - `POST /claim` — atomically claim a ticket (`{ id? , kind? }`) → `{ note }` (now `in_progress`) or `{ note: null, reason }`. How parallel `/clickfix` threads divide work.
 - `PATCH /feedback` — `{ id, status: "open" | "in_progress" | "done" }` — resolve (`done`), or release a claim back to `open`
