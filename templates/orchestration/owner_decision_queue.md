@@ -17,9 +17,9 @@ is its ledger.
   what stops decisions getting lost.
 - **A decision blocks its ticket.** A ticket listed under "Blocks" cannot be closed, marked
   done, or progressed past the decision point until the decision lands.
-- **No silent reclassification.** "Diagnosis-only" / "spec-complete" is not closure — the item
-  enters "Awaiting owner" as `needs-decision` until the owner rules implement / park / reject /
-  revise.
+- **No silent reclassification.** "Diagnosis-only" / "spec-complete" is not closure — a ticket
+  flagged `decision required` enters "Awaiting owner" until the owner rules implement / park /
+  reject / revise.
 - **Age and escalate.** Bump `Age` (in boss cycles) each cycle. At or past the escalation
   threshold (default 3), move the row to the top, mark it `escalated`, and state plainly in the
   digest what is stalled because of it.
@@ -29,6 +29,10 @@ is its ledger.
 - **Lifecycle:** `raised → surfaced → awaiting-owner → escalated → decided → actioned`. A row
   leaves "Awaiting owner" only when the owner rules; then it moves to "Decided", and to
   "Actioned/closed" once the resulting work is merged or deliberately parked.
+- **Sole writer + handoff.** This file has exactly one writer — the decision steward
+  (`/clickfix-decisions`); the orchestrator only reads it. When the owner rules, the steward
+  writes the decision back onto the ticket and flips its flag to `ready for orchestrator`. That
+  flag — not this queue — is how the orchestrator learns the work is cleared to assign.
 
 ## Awaiting owner  (source for the digest — oldest first)
 

@@ -48,7 +48,7 @@ a pile of feedback while you click around, then action it all in Claude Code whe
 
 ```bash
 npm i -g github:emb91/clickfix     # installs the `clickfix` command (not on npm yet — from GitHub)
-clickfix install                    # adds /clickfix, /clickfix-doc and /clickfix-orchestrate to ~/.claude/commands
+clickfix install                    # adds /clickfix, /clickfix-doc, /clickfix-orchestrate, /clickfix-decisions to ~/.claude/commands
 ```
 
 `clickfix install` only needs running once — the commands then work in **every** project.
@@ -291,6 +291,13 @@ It keeps every existing file and only adds what's missing.)
 On first run it **finishes setup with you** — confirms the detected checks and asks where
 tickets come from — then runs the loop: reconcile from tools → launch gate + WIP cap → assign
 one agent per ticket → audit → PR → owner-decision queue → recovery board.
+
+**Decisions that need you (optional dedicated thread).** When a ticket needs a product call, a
+diagnosis agent flags it `decision required`. The orchestrator **skips** those. Run
+**`/clickfix-decisions`** — its own thread, the sole writer of `owner_decision_queue.md` — to
+surface them to you (silent when there are none); once you rule, it flags the ticket
+`ready for orchestrator` and the orchestrator picks it up. This keeps owner decisions from
+getting lost without stalling the build loop.
 
 The starter templates live in [`templates/orchestration/`](templates/orchestration/); see its
 [README](templates/orchestration/README.md) for the pattern. Entirely optional — the core

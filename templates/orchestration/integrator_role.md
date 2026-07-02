@@ -39,9 +39,20 @@ copied the templates by hand, set them yourself.
 ## Decision steward — decisions must never get lost
 
 Owner decisions are the single thing most likely to silently rot: an agent hits a product fork,
-notes it, and it disappears into a doc nobody re-reads. The orchestrator carries a standing
-**decision-steward** responsibility — treat it as seriously as the audit role. Its ledger is
-`.clickfix/owner_decision_queue.md`.
+notes it, and it disappears into a doc nobody re-reads. The **decision steward** owns this. It can
+run as its own thread (`/clickfix-decisions`) or as an orchestrator responsibility — but either
+way it is the **sole writer** of `.clickfix/owner_decision_queue.md`; the orchestrator only reads it.
+
+The flag protocol across the three roles:
+
+- **Diagnosis agents** flag a ticket `decision required` when it needs an owner call — they do
+  not guess and do not close it.
+- **The orchestrator** skips any `decision required` ticket (never assigns an agent to one),
+  leaves it for the steward, and works only cleared tickets — picking up those flagged
+  `ready for orchestrator`.
+- **The steward** surfaces `decision required` tickets to the owner (silent when there are none),
+  records the ruling, and writes back to the ticket exactly two things: the decision, and the
+  flag `ready for orchestrator`.
 
 - **Every owner update opens with a Decisions digest** — before status, PRs, anything. List
   EVERY open decision, oldest first, each with: id, one-line question, your recommendation +
