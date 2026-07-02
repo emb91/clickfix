@@ -264,24 +264,35 @@ Tip: add `.clickfix/` to your project's `.gitignore` — it's a working doc, not
 
 If you want to go beyond "click → `/clickfix`" and run a **fleet of agents off the
 backlog** — an orchestrator that hands each ticket to a sub-agent, audits the work, and
-opens PRs, with a human owner making product calls — scaffold it into any project in one
-command:
+opens PRs, with a human owner making product calls — set it up in three steps:
+
+**Step 1 — install (once per machine).** Same `clickfix install` as above; it also adds the
+`/clickfix-orchestrate` command alongside `/clickfix` and `/clickfix-doc`.
+
+**Step 2 — scaffold (once per project).** From the project root:
 
 ```bash
-clickfix orchestrate      # scaffolds AGENTS.md + .clickfix/ docs, auto-detects your stack
+clickfix orchestrate
 ```
 
-It drops `AGENTS.md` at the repo root and the `.clickfix/` coordination docs, gitignores
+Drops `AGENTS.md` at the repo root and the `.clickfix/` coordination docs, gitignores
 `.clickfix/`, and **auto-fills what it can detect** — your check commands (from lockfiles:
 pnpm/npm/yarn/bun, TypeScript, Python/pytest, Go, Rust, Supabase) into `AGENTS.md`, and the
-owner + repo + checkout path (from git) into `integrator_role.md`. It's idempotent and never
-overwrites files you've edited, so it's safe to re-run.
+owner + repo + checkout path (from git) into `integrator_role.md`. Idempotent and never
+overwrites files you've edited, so it's safe to re-run. (Already hand-set up `.clickfix/`?
+It keeps every existing file and only adds what's missing.)
 
-Then run **`/clickfix-orchestrate`** in a Claude Code session rooted there. On first run it
-**finishes setup with you** — confirms the detected checks and asks where tickets come from —
-then runs the loop (reconcile from tools → launch gate + WIP cap → assign one agent per ticket
-→ audit → PR → owner-decision queue → recovery board). The starter templates live in
-[`templates/orchestration/`](templates/orchestration/); see its
+**Step 3 — run the loop.** In a Claude Code session rooted in the project:
+
+```
+/clickfix-orchestrate
+```
+
+On first run it **finishes setup with you** — confirms the detected checks and asks where
+tickets come from — then runs the loop: reconcile from tools → launch gate + WIP cap → assign
+one agent per ticket → audit → PR → owner-decision queue → recovery board.
+
+The starter templates live in [`templates/orchestration/`](templates/orchestration/); see its
 [README](templates/orchestration/README.md) for the pattern. Entirely optional — the core
 `/clickfix` loop needs none of it.
 
