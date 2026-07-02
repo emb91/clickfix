@@ -24,6 +24,10 @@ path, repo, detected check commands). Before running the loop the first time, cl
   else — and record it near the top of `.clickfix/control_board.md`/`recovery_board.md`.
 - **Owner decisions:** if anything is gated on a product call, seed it into
   `.clickfix/owner_decision_queue.md` now.
+- **Scheduling:** offer to set up the recurring loop — a ~10-min backlog poll and a ~30-min boss
+  check (reconcile + launch gate) — using whatever scheduler is available here (Claude Code
+  scheduled tasks, cron, or a `/loop` runner). If I decline or none is available, note that the
+  loop is run manually via `/clickfix-orchestrate`.
 
 Once these are set, note in the board that first-run setup is done so later runs skip straight
 to the boss check. If everything already looks configured, skip this section.

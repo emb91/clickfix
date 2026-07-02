@@ -83,8 +83,28 @@ Reconcile routine — run at the top of every heartbeat / boss check, from tools
   section until every leftover branch, worktree, stash, and ambiguous folder is accounted for.
 - A merged PR is not automatically closed. If it has release/env/migration/smoke/owner-review
   checks pending, keep it in the heartbeat summary as release-blocked until the check is actually done.
+- **Verify PR state from tools before acting on it — never from memory.** PRs can merge (or
+  close) out-of-band, often within minutes. Before pushing to, advancing, or reporting a PR,
+  check `gh pr view <n> --json state,mergedAt`. Never push more commits to a branch whose PR has
+  merged; cut a fresh branch off latest main instead (see the repo's AGENTS.md branch-safety rules).
 - If a check can't run via the first tool path, check available connectors/MCP tools before marking
   it blocked. A missing CLI does not mean a missing capability.
+
+## Scheduling the loop (optional)
+
+The loop runs on demand via `/clickfix-orchestrate`, but for continuous operation set up two
+recurring checks with whatever scheduler the environment offers (Claude Code scheduled tasks,
+system cron, or a `/loop`-style runner):
+
+- a **backlog poll** (~every 10 min) that diagnoses new tickets into the ledger (`/clickfix-doc`
+  or equivalent);
+- a **boss check** (~every 30 min) that runs the reconcile routine above, enforces the launch
+  gate, and notifies the owner only on drift, dirty state, PR trouble, stale-ledger conflict,
+  unexplained active agents, or a needed decision.
+
+`clickfix orchestrate` does not create these — set them up once per project (the
+`/clickfix-orchestrate` first run offers to). Keep the mechanism agnostic; what matters is that
+both checks verify state from tools, not memory.
 
 ## Shared checkout
 
