@@ -112,7 +112,10 @@ Reconcile routine — run at the top of every heartbeat / boss check, from tools
 
 ## Ledger loop
 
-- Check `.clickfix/clickfix_rootcause_bugs.md` every heartbeat.
+- Check `.clickfix/clickfix_rootcause_bugs.md` every heartbeat. This ledger is the clickfix
+  ticket source of record — its own doc with its own update rules — and is **separate from any
+  product backlog** (e.g. `BACKLOG.md`). Don't conflate them; only work the product backlog if the
+  owner explicitly directs it.
 - New ticket IDs go at the bottom or into clearly labeled sections; never duplicate item numbers.
 - The job is not complete until every ticket is closed, PR-opened for owner audit, or explicitly
   marked blocked with the reason and next owner.
@@ -140,7 +143,7 @@ The loop runs on demand via `/clickfix-orchestrate`, but for continuous operatio
 recurring checks with whatever scheduler the environment offers (Claude Code scheduled tasks,
 system cron, or a `/loop`-style runner):
 
-- a **backlog poll** (~every 10 min) that diagnoses new tickets into the ledger (`/clickfix-doc`
+- a **ticket-ledger poll** (~every 10 min) that diagnoses new tickets into the ledger (`/clickfix-doc`
   or equivalent);
 - a **boss check** (~every 30 min) that runs the reconcile routine above, enforces the launch
   gate, and notifies the owner only on drift, dirty state, PR trouble, stale-ledger conflict,

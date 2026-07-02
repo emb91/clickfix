@@ -19,12 +19,13 @@ path, repo, detected check commands). Before running the loop the first time, cl
   typecheck/test/lint here (they're a best guess). Fix them if wrong.
 - **Owner / repo:** if the auto-filled header in `.clickfix/integrator_role.md` still says
   "set your name", or the repo is wrong, ask me and correct it.
-- **Ticket source:** the scaffold can't know this. Ask where tickets come from — the clickfix
-  toolbar (`.clickfix/clickfix_rootcause_bugs.md`), a `BACKLOG.md`, GitHub issues, or something
-  else — and record it near the top of `.clickfix/control_board.md`/`recovery_board.md`.
+- **Ticket source:** the default is the clickfix ledger `.clickfix/clickfix_rootcause_bugs.md`
+  (populated by `/clickfix-doc` or the toolbar, or written directly), kept **separate** from any
+  product backlog. Only pull from a product backlog (e.g. `BACKLOG.md`) or GitHub issues if I
+  explicitly opt in. Record the choice near the top of the control board.
 - **Owner decisions:** if anything is gated on a product call, seed it into
   `.clickfix/owner_decision_queue.md` now.
-- **Scheduling:** offer to set up the recurring loop — a ~10-min backlog poll and a ~30-min boss
+- **Scheduling:** offer to set up the recurring loop — a ~10-min ticket-ledger poll and a ~30-min boss
   check (reconcile + launch gate) — using whatever scheduler is available here (Claude Code
   scheduled tasks, cron, or a `/loop` runner). If I decline or none is available, note that the
   loop is run manually via `/clickfix-orchestrate`.
@@ -50,7 +51,10 @@ true, reconcile first and do not start new product work.**
 
 ## 2. Work the loop
 
-- Read the ticket source (`.clickfix/clickfix_rootcause_bugs.md` and/or the project's backlog).
+- Read the clickfix ticket ledger, **`.clickfix/clickfix_rootcause_bugs.md`** (its own doc with
+  its own update rules) — this is the default and only ticket source. It is **separate from any
+  product backlog** the project keeps (e.g. `BACKLOG.md`); do NOT pull clickfix work from the
+  product backlog unless I explicitly tell you to.
 - **Skip any ticket flagged `decision required`** — never assign an agent to one. It belongs to
   the decision steward (`/clickfix-decisions`); leave it until it comes back flagged
   `ready for orchestrator`. Treat `.clickfix/owner_decision_queue.md` as **read-only** — you read
