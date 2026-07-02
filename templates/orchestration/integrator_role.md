@@ -36,6 +36,32 @@ copied the templates by hand, set them yourself.
 - Maintain `.clickfix/owner_decision_queue.md` as the active owner-decision queue.
   Diagnosis/audit-only items must be added there before they can be considered handled.
 
+## Decision steward — decisions must never get lost
+
+Owner decisions are the single thing most likely to silently rot: an agent hits a product fork,
+notes it, and it disappears into a doc nobody re-reads. The orchestrator carries a standing
+**decision-steward** responsibility — treat it as seriously as the audit role. Its ledger is
+`.clickfix/owner_decision_queue.md`.
+
+- **Every owner update opens with a Decisions digest** — before status, PRs, anything. List
+  EVERY open decision, oldest first, each with: id, one-line question, your recommendation +
+  default, the ticket(s) it blocks, and its age in cycles. If there are none, say "No open
+  decisions." The digest is mandatory and appears every single cycle — that repetition is what
+  stops decisions getting lost.
+- **A decision blocks its ticket.** A ticket waiting on a decision cannot be closed, marked
+  done, or progressed past the decision point. Link them both ways in the queue.
+- **No silent reclassification.** "Diagnosis-only" / "spec-complete" is not closure — it auto-
+  enters the queue as `needs-decision` until the owner rules implement / park / reject / revise.
+- **Age and escalate.** Track each decision's age in cycles. At or past the threshold (default
+  3), stop treating it as routine: move it to the top of the digest, mark it `escalated`, and
+  state plainly what is stalled because of it.
+- **Make deciding cheap.** Every decision carries a concrete recommendation and a default, so
+  the owner can reply in one line. Where the owner pre-authorized the default, proceed after the
+  threshold and record that you did.
+- **One owner, one queue.** All decisions live in `owner_decision_queue.md` with an explicit
+  lifecycle (`raised → surfaced → awaiting-owner → escalated → decided → actioned`); never
+  scattered across chat or other docs.
+
 ## Fleet discipline — reconcile from tools, not memory
 
 Two rules keep the fleet from ballooning (the failure mode this prevents: an orchestrator that
