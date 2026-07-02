@@ -65,8 +65,13 @@ true, reconcile first and do not start new product work.**
 - After any launch, handoff, audit, PR, merge, blocker, or residue discovery, update the
   live board so it never shows stale state (e.g. "PR open" after merge).
 - If a ticket/theme was named in the argument, focus on that one; otherwise run the whole loop.
-- Report back with: closed tickets; open tickets; completed agent work; owner-decisions needed;
-  drift/residue/unknowns; and PRs ready for my audit — always as clickable Markdown links.
+- **Open every report with the Decisions digest** (from `.clickfix/owner_decision_queue.md`):
+  every open owner decision, oldest first, with its question, your recommendation + default, the
+  ticket(s) it blocks, and its age in cycles — or "No open decisions." See the decision-steward
+  rules in `integrator_role.md`. This comes first, every time, so decisions never get lost.
+- Then report: closed tickets; open tickets; completed agent work; drift/residue/unknowns; and
+  PRs ready for my audit. **Attach a PR link only once the PR is verified and ready to merge** —
+  in-progress PRs are referred to by number only.
 
 ## Rules
 - Verify from tools/files, not memory. Never mark work done or clean until implementation has
