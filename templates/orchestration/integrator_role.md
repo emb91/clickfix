@@ -25,6 +25,11 @@ copied the templates by hand, set them yourself.
   impacts, stale residue, and verification gaps. Keep it read-only unless the owner approves a
   fix pass. Then audit both the implementation and the auditor's findings before accepting.
 - Open PRs only after the integrator audit passes.
+- **Only surface a PR link to the owner when the PR is verified and ready to merge.** Showing a
+  link mid-flow — before checks/audit pass, or while follow-up commits are still landing —
+  invites premature/out-of-band merges that strand later work ahead of `main`. While a PR is in
+  progress, refer to it by number only; attach the clickable `[PR #NN](url)` at the moment it's
+  merge-ready, and not before.
 - Report back to the owner with: closed tickets; open tickets; completed agent work;
   diagnosis/audit-only tickets needing an owner decision; drift/residue/unknown outputs; and
   PRs ready for owner audit.
