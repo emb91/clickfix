@@ -66,6 +66,10 @@ true, reconcile first and do not start new product work.**
   the decision steward (`/clickfix-decisions`); leave it until it comes back flagged
   `ready for orchestrator`. Treat `.clickfix/owner_decision_queue.md` as **read-only** — you read
   it to know what's blocked, you never write it.
+- **Skip any ticket of kind `question` (❓ Ask)** too — those are *answered*, not built. They
+  belong to `/clickfix-questions` (its own `.clickfix/clickfix_questions.md` ledger); never assign
+  an agent to one. A question only becomes your work if the owner rejects its answer and it gets
+  escalated into a new `clickfix_rootcause_bugs.md` ticket.
 - For each cleared ticket/theme (open, or flagged `ready for orchestrator`), ensure **exactly
   one owning agent**, working in its own worktree/branch off latest `main`. Respect the WIP cap
   (max 3 impl + 1 audit agent).

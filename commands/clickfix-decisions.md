@@ -28,10 +28,13 @@ The argument passed to this command is: `$ARGUMENTS`
 ## 2. Surface to the owner — only if there's something
 
 - If nothing is awaiting the owner, **stop silently**.
-- Otherwise present the Decisions digest: every open decision, oldest first, with question,
-  recommendation + default, blocked ticket(s), and age. Escalate anything ≥ 3 cycles to the top,
-  and say plainly what's stalled because of it.
-- Ask the owner to rule: implement / park / reject / revise. Keep it one-line-answerable.
+- Otherwise present the digest as clean **numbered one-liners — nothing else up front**:
+  `1. ticket <id> — awaiting decision on <thing>`. No walls of text; just the list.
+- Then let the owner **drill in**: when they say "tell me more about `<id>`", expand *that* one —
+  the full question, your recommendation + default, what it blocks, its age — and discuss to a
+  decision. Keep the rest of the list collapsed.
+- Escalate anything ≥ 3 cycles to the top of the list and flag plainly what's stalled.
+- The ruling is one of: implement / park / reject / revise — keep it one-line-answerable.
 
 ## 3. Record the ruling + hand off
 
