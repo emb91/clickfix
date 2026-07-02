@@ -25,7 +25,8 @@ intake for the orchestrator / owner to act on.
 **Root cause** — file:line, and why.
 **Recommended solution(s)** — concrete, file:line; flag if a product decision is needed (A vs B).
 **Other issues noticed** — anything out of scope worth a reviewer's eyes.
-**Status** — diagnosis-only / implemented (PR #) / blocked (reason) / owner-decision-required.
+**Status** — diagnosis-only / `decision required` (needs an owner call — steward's) /
+`ready for orchestrator` (owner decided, cleared to assign) / implemented (PR #) / blocked (reason).
 ```
 
 ---

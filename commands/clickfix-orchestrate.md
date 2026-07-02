@@ -51,14 +51,19 @@ true, reconcile first and do not start new product work.**
 ## 2. Work the loop
 
 - Read the ticket source (`.clickfix/clickfix_rootcause_bugs.md` and/or the project's backlog).
-- For each ready ticket/theme, ensure **exactly one owning agent**, working in its own
-  worktree/branch off latest `main`. Respect the WIP cap (max 3 impl + 1 audit agent).
+- **Skip any ticket flagged `decision required`** — never assign an agent to one. It belongs to
+  the decision steward (`/clickfix-decisions`); leave it until it comes back flagged
+  `ready for orchestrator`. Treat `.clickfix/owner_decision_queue.md` as **read-only** — you read
+  it to know what's blocked, you never write it.
+- For each cleared ticket/theme (open, or flagged `ready for orchestrator`), ensure **exactly
+  one owning agent**, working in its own worktree/branch off latest `main`. Respect the WIP cap
+  (max 3 impl + 1 audit agent).
 - **Do not implement fixes yourself** unless I explicitly ask. Assign, audit, merge.
 - When an agent completes: capture its handoff, audit the branch/worktree (diff + relevant
   checks + second/third-order impacts), send concrete blockers back if it isn't clean, and
   only open a PR after the audit passes.
-- Anything needing a product decision goes to `.clickfix/owner_decision_queue.md` and is
-  surfaced to me — it is **not** silently closed.
+- If you hit something that needs a product decision, flag the ticket `decision required` and
+  leave it for the steward — do NOT guess, do NOT assign, do NOT silently close it.
 
 ## 3. Keep the board fresh + report
 

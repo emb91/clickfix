@@ -173,6 +173,7 @@ if (args[0] === "install") {
     console.log(`    /clickfix              — fix each ticket and commit it`)
     console.log(`    /clickfix-doc          — diagnose each ticket into .clickfix/clickfix_rootcause_bugs.md (no code changes)`)
     console.log(`    /clickfix-orchestrate  — run the multi-agent orchestrator loop (after \`clickfix orchestrate\`)`)
+    console.log(`    /clickfix-decisions    — surface tickets needing an owner decision, record your rulings`)
   } catch (err) {
     console.error("clickfix: install failed:", err)
     process.exit(1)
