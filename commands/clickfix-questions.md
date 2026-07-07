@@ -12,6 +12,21 @@ Sidecar base URL: **`http://localhost:7331`** (default; use your `--port` if dif
 
 The argument passed to this command is: `$ARGUMENTS`
 
+## 0. Talk to THIS project's sidecar (never answer from another repo's tickets)
+
+clickfix is **per-project** — each repo runs its own sidecar, and this command is global, so it must
+target the right one. Before claiming anything:
+
+1. **Find this project's port:** read `.feedback/sidecar.json` in the project root and use its
+   `port`; if that file is missing, fall back to `7331`. Base URL = `http://localhost:<port>`.
+2. **Verify identity:** `curl -s http://localhost:<port>/health` and compare its `dir` (resolve
+   symlinks) to this project's root (`git rev-parse --show-toplevel`, else the cwd, via `realpath`).
+   If they **don't match** — or nothing responds — **STOP** and tell me: *"the clickfix sidecar on
+   :<port> is serving `<its dir>`, not this project. Start `clickfix` in this project first, then
+   re-run me."* Never answer from a sidecar serving a different repo.
+
+Use that resolved base URL for the sidecar calls below (written with the default `:7331`).
+
 ## 1. Claim a question ticket
 
 - If the argument is non-empty, claim that id:

@@ -17,6 +17,10 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
   const FILE = path.join(mailboxDir, "inbox.jsonl")
   await fs.mkdir(mailboxDir, { recursive: true })
   const toolbarPath = path.join(here, "toolbar.js")
+  // Per-project identity: resolve the real project dir so a /clickfix command can verify it's
+  // talking to THIS project's sidecar (via /health) and never works another repo's tickets.
+  const realDir = await fs.realpath(dir).catch(() => path.resolve(dir))
+  let boundPort = port
 
   function cors(res) {
     res.setHeader("Access-Control-Allow-Origin", "*")
@@ -187,20 +191,51 @@ export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
       return json(res, 200, result)
     }
 
+    if (url.pathname === "/health") {
+      // Lets a /clickfix command confirm this sidecar serves THIS project before claiming.
+      return json(res, 200, { ok: true, dir: realDir, port: boundPort, pid: process.pid })
+    }
+
     if (url.pathname === "/") {
       res.writeHead(200, { "Content-Type": "text/plain" })
-      return res.end(`clickfix running.\nmailbox: ${FILE}\nscript:  <script src="http://localhost:${port}/toolbar.js"></script>\n`)
+      return res.end(`clickfix running.\nproject: ${realDir}\nmailbox: ${FILE}\nscript:  <script src="http://localhost:${boundPort}/toolbar.js"></script>\n`)
     }
 
     res.writeHead(404)
     res.end("Not found")
   })
 
-  await new Promise((resolve) => server.listen(port, resolve))
-  console.log(`clickfix  →  http://localhost:${port}`)
+  // Bind the requested port, or the next free one — so a second project doesn't crash on
+  // EADDRINUSE; each repo gets its own instance on its own port.
+  boundPort = await new Promise((resolve, reject) => {
+    let p = port
+    const onErr = (e) => {
+      if (e && e.code === "EADDRINUSE" && p < port + 20) {
+        p++
+        server.listen(p, onOk)
+      } else reject(e)
+    }
+    const onOk = () => {
+      server.removeListener("error", onErr)
+      resolve(p)
+    }
+    server.on("error", onErr)
+    server.listen(p, onOk)
+  })
+  // Marker so /clickfix* commands in this project can find THIS sidecar's port (not another
+  // repo's on the default port). Lives in the gitignored mailbox dir.
+  await fs
+    .writeFile(
+      path.join(mailboxDir, "sidecar.json"),
+      JSON.stringify({ dir: realDir, port: boundPort, pid: process.pid, startedAt: new Date().toISOString() }, null, 2)
+    )
+    .catch(() => {})
+  if (boundPort !== port) console.log(`clickfix: port ${port} was busy — using ${boundPort}`)
+  console.log(`clickfix  →  http://localhost:${boundPort}`)
+  console.log(`  project: ${realDir}`)
   console.log(`  mailbox: ${FILE}`)
   console.log(`  add to your site (dev only):`)
-  console.log(`    <script src="http://localhost:${port}/toolbar.js"></script>`)
+  console.log(`    <script src="http://localhost:${boundPort}/toolbar.js"></script>`)
   console.log(`  then work the notes in Claude Code with:  /clickfix  (one ticket per thread)`)
   return server
 }
