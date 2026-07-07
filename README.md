@@ -132,6 +132,19 @@ The toolbar derives the sidecar address from its own `src`, so if you run
 clickfix on a different `--port` for another project, just change the port in
 that project's script tag to match.
 
+## Multiple projects at once (per-project sidecars)
+
+clickfix is **per-project** — run `clickfix` in each repo and each gets its own instance:
+
+- **No port juggling.** If `7331` is already taken (another project's sidecar), clickfix
+  **auto-picks the next free port** and prints it — no more `EADDRINUSE` crash. It records the
+  chosen port in that project's `.feedback/sidecar.json`.
+- **Commands find the right one.** The `/clickfix*` commands read `.feedback/sidecar.json` to
+  target *this* project's sidecar, and check its `/health` identity before claiming — so a
+  command **refuses to work another repo's tickets** (it won't diagnose a lifey ticket while
+  you're in biosignals). Tickets stay in their own project.
+- **Toolbar:** set that project's `<script>` port to its sidecar port (the one clickfix printed).
+
 ## What gets captured
 
 Every note is one JSON line:
