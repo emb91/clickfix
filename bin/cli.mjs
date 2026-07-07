@@ -147,7 +147,7 @@ Setup (one time):
 
 Each session:
   - npx clickfix                         # run the sidecar in your project
-  - click an element, type feedback → it lands in <dir>/.feedback/inbox.jsonl
+  - click an element, type feedback → it lands in <dir>/.clickfix/inbox.jsonl
   - in Claude Code (session rooted in your project):
        /clickfix       fix each ticket and commit it
        /clickfix-doc   diagnose each ticket into a review doc, no code changes

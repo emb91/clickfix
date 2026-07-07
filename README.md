@@ -12,7 +12,7 @@ no framework lock-in, no second agent to babysit.
 ```
  browser (your site)                 sidecar (localhost:7331)          you, in Claude Code
  ┌──────────────────┐   POST /feedback   ┌────────────────────┐   /clickfix   ┌──────────┐
- │ ✦ click + type   │ ─────────────────▶ │ .feedback/inbox    │ ◀──reads───── │ edits +  │
+ │ ✦ click + type   │ ─────────────────▶ │ .clickfix/inbox    │ ◀──reads───── │ edits +  │
  │ (toolbar.js)     │                    │   .jsonl           │ ──notes────▶  │ you chat │
  └──────────────────┘                    └────────────────────┘               └──────────┘
 ```
@@ -23,7 +23,7 @@ clickfix is **two halves**:
 
 1. A **browser toolbar** that captures feedback — you click an element on your running app,
    type what's wrong, and it saves a precise "ticket" (page + element + source file:line +
-   your note) to a local file (`.feedback/inbox.jsonl`).
+   your note) to a local file (`.clickfix/inbox.jsonl`).
 2. Two **[Claude Code](https://docs.anthropic.com/en/docs/claude-code) commands** that work
    those tickets — `/clickfix` (fix them) and `/clickfix-doc` (diagnose them into a doc).
 
@@ -68,7 +68,7 @@ Put it in whatever file renders on every page (your root layout / template) — 
 ## Daily use
 
 > **Run everything from your project folder.** clickfix stores tickets relative to where you
-> launch it (in `<that folder>/.feedback/`), and `/clickfix` reads them relative to where
+> launch it (in `<that folder>/.clickfix/`), and `/clickfix` reads them relative to where
 > Claude Code is rooted. So the sidecar **and** the Claude Code session must both be started
 > from your project's root directory — otherwise they won't see the same tickets.
 
@@ -76,7 +76,7 @@ Put it in whatever file renders on every page (your root layout / template) — 
    ```bash
    cd /path/to/your/project && clickfix     # serves http://localhost:7331
    ```
-   The `cd` matters — clickfix stores tickets in `<that folder>/.feedback/`. (Override the
+   The `cd` matters — clickfix stores tickets in `<that folder>/.clickfix/`. (Override the
    port/dir with `clickfix --port 7331 --dir /path/to/your/project` to run from anywhere.)
    Your dev server runs as normal alongside it.
 2. **Leave feedback in the browser.** A **✦ Feedback** button appears bottom-right (drag it
@@ -138,8 +138,8 @@ clickfix is **per-project** — run `clickfix` in each repo and each gets its ow
 
 - **No port juggling.** If `7331` is already taken (another project's sidecar), clickfix
   **auto-picks the next free port** and prints it — no more `EADDRINUSE` crash. It records the
-  chosen port in that project's `.feedback/sidecar.json`.
-- **Commands find the right one.** The `/clickfix*` commands read `.feedback/sidecar.json` to
+  chosen port in that project's `.clickfix/sidecar.json`.
+- **Commands find the right one.** The `/clickfix*` commands read `.clickfix/sidecar.json` to
   target *this* project's sidecar, and check its `/health` identity before claiming — so a
   command **refuses to work another repo's tickets** (it won't diagnose a lifey ticket while
   you're in biosignals). Tickets stay in their own project.
@@ -195,7 +195,7 @@ are never conflated.
 
 ## Working the notes with /clickfix
 
-Notes captured by the toolbar just sit in `.feedback/inbox.jsonl`. To act on them, open a
+Notes captured by the toolbar just sit in `.clickfix/inbox.jsonl`. To act on them, open a
 **Claude Code session in the same project** and run:
 
 ```
@@ -231,7 +231,7 @@ process, so two threads can't grab the same note). That means:
 > *you* (in Claude Code) are the agent, so git, branches, and commits stay in your hands.
 
 Prefer to drive it yourself without the command? The mailbox is just a file — read
-`.feedback/inbox.jsonl` and act on `status: "open"` notes.
+`.clickfix/inbox.jsonl` and act on `status: "open"` notes.
 
 ## Diagnose-only mode (/clickfix-doc)
 
