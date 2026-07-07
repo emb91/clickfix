@@ -8,14 +8,35 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 
 // Standalone "page feedback" sidecar.
 // Serves the in-browser toolbar and a tiny JSON mailbox. Notes captured from the
-// toolbar are appended to `<dir>/.feedback/inbox.jsonl`; you then work them in a
+// toolbar are appended to `<dir>/.clickfix/inbox.jsonl`; you then work them in a
 // Claude Code session running in the same project via the `/clickfix` command
 // (`clickfix install` drops it in). No host-app backend, no headless agent.
 
 export async function startServer({ port = 7331, dir = process.cwd() } = {}) {
-  const mailboxDir = path.join(dir, ".feedback")
+  // Everything clickfix lives under one gitignored folder: .clickfix/ holds the ticket inbox,
+  // the sidecar marker, and (when orchestration is set up) the coordination docs.
+  const mailboxDir = path.join(dir, ".clickfix")
   const FILE = path.join(mailboxDir, "inbox.jsonl")
   await fs.mkdir(mailboxDir, { recursive: true })
+  // Migrate a pre-0.14 inbox from the old .feedback/ folder so tickets aren't stranded.
+  try {
+    await fs.access(FILE)
+  } catch {
+    try {
+      await fs.rename(path.join(dir, ".feedback", "inbox.jsonl"), FILE)
+      console.log("clickfix: migrated .feedback/inbox.jsonl → .clickfix/inbox.jsonl")
+    } catch {}
+  }
+  // Make sure .clickfix/ is gitignored — tickets + coordination docs are local, not source.
+  try {
+    const gi = path.join(dir, ".gitignore")
+    let cur = ""
+    try { cur = await fs.readFile(gi, "utf8") } catch {}
+    if (!cur.split(/\r?\n/).some((l) => l.trim().replace(/\/$/, "") === ".clickfix")) {
+      await fs.appendFile(gi, `${cur && !cur.endsWith("\n") ? "\n" : ""}\n# clickfix (local tickets + coordination docs)\n.clickfix/\n`)
+      console.log("clickfix: added .clickfix/ to .gitignore")
+    }
+  } catch {}
   const toolbarPath = path.join(here, "toolbar.js")
   // Per-project identity: resolve the real project dir so a /clickfix command can verify it's
   // talking to THIS project's sidecar (via /health) and never works another repo's tickets.

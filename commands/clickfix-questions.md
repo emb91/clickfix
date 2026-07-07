@@ -17,7 +17,7 @@ The argument passed to this command is: `$ARGUMENTS`
 clickfix is **per-project** — each repo runs its own sidecar, and this command is global, so it must
 target the right one. Before claiming anything:
 
-1. **Find this project's port:** read `.feedback/sidecar.json` in the project root and use its
+1. **Find this project's port:** read `.clickfix/sidecar.json` in the project root and use its
    `port`; if that file is missing, fall back to `7331`. Base URL = `http://localhost:<port>`.
 2. **Verify identity:** `curl -s http://localhost:<port>/health` and compare its `dir` (resolve
    symlinks) to this project's root (`git rev-parse --show-toplevel`, else the cwd, via `realpath`).
