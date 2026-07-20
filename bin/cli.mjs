@@ -175,6 +175,7 @@ if (args[0] === "install") {
     console.log(`    /clickfix-orchestrate  — run the multi-agent orchestrator loop (after \`clickfix orchestrate\`)`)
     console.log(`    /clickfix-decisions    — surface tickets needing an owner decision, record your rulings`)
     console.log(`    /clickfix-questions    — answer ❓ Ask tickets (research + ELI5), log to clickfix_questions.md`)
+    console.log(`    /clickfix-maintenance  — self-contained lane for Sentry-derived maintenance tickets (rule + fix)`)
   } catch (err) {
     console.error("clickfix: install failed:", err)
     process.exit(1)
