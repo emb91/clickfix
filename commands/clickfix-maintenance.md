@@ -55,12 +55,17 @@ The argument passed to this command is: `$ARGUMENTS`
 
 ## 5. Report
 
-One structured heartbeat, minimal narration, same shape every run:
+One structured heartbeat, minimal narration (no play-by-play) — but the report **carries the actual
+diagnoses**, because seeing them is the point of the run. Same shape every time:
 - **🗳️ Decisions** — the digest, first (or "No open decisions").
 - **State** — open PRs · shared checkout · active diagnosis agents.
-- **Did this run** — ticketed / diagnosed, or "nothing — reconcile only".
-- **Diagnosed & ready** — tickets with a finished diagnosis + ruling, awaiting your fix decision.
-- **In progress** — tickets currently being diagnosed.
+- **Diagnosed this run** — **one short block per ticket that finished diagnosing**, with its
+  diagnosis (not just its title):
+  > `<ticket-id>` — <what it is, 1 line>
+  > **Root cause:** <`file:line` + why>
+  > **Proposed fix:** <1–2 lines> · **Options:** fix / park
+  Every diagnosed ticket appears here. If none finished this run, say so.
+- **In progress** — tickets still being diagnosed (id + what the agent is chasing).
 - **Next** — the one thing you recommend + any ruling you need from me.
 
 ## Rules
