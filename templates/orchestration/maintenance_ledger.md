@@ -23,7 +23,8 @@ Anything touching product behavior, spend, copy, or anything irreversible — ne
 
 ## Open — ready for orchestrator
 
-Unambiguous fixes needing no ruling — `/clickfix-maintenance` assigns a sub-agent directly.
+Cleared of any ruling, **un-diagnosed** — `/clickfix-maintenance` immediately fires a read-only
+diagnosis agent to investigate each (never fix).
 
 | Ticket | Finding / impact / proposed action | Effort | Sentry | Filed | State |
 | --- | --- | --- | --- | --- | --- |
