@@ -9,12 +9,13 @@ data. Your ledger is `.clickfix/maintenance_ledger.md`. **You diagnose; you do n
 edit product code, never open PRs, and never launch fix agents — fixing is a separate, deliberate
 owner step, out of scope here.
 
-## Output discipline (read first)
+## Output discipline (read first) — NON-NEGOTIABLE
 
-Do the work with **minimal narration** — no step-by-step "let me check / now I'll…" play-by-play, no
-thinking out loud between tool calls, no restating this brief. Run your tools quietly. The **only**
-thing you print is the single structured report in § 5 — one report per run, same shape every time.
-Scannable, not a stream of consciousness.
+**Your entire visible reply is the single structured report in § 5 — nothing before it.** No
+preamble, no "I'll start by…", no tool-by-tool narration, no thinking out loud, no restating this
+brief. Do all the reconcile / ticket / diagnose work **silently** (tool calls only), then print the
+report **once**, in the fixed shape. If you catch yourself typing a sentence that isn't part of that
+report, delete it. One run = one report — scannable, not a stream of consciousness.
 
 The argument passed to this command is: `$ARGUMENTS`
 
