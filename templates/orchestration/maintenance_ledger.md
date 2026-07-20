@@ -6,12 +6,13 @@
 
 Maintenance tickets come from an **upstream source** (e.g. a scheduled Sentry-triage task), not the
 browser toolbar — operational-health items (errors, warnings, version nits), not product feedback.
-This is a **self-contained** thread: the triage task appends new tickets here (plain-English,
-flagged `decision required` or `ready for orchestrator`); `/clickfix-maintenance` records your
-rulings and then **assigns approved tickets to its own sub-agents to fix** (worktree → audit → PR),
-the same discipline the orchestrator uses but on the maintenance stream. It does **not** promote to
-`open_ticket_list.md` or hand work to the product orchestrator, and never touches the product bug
-ledger or the raw log data.
+This is a **triage + diagnosis** thread: the triage task appends new tickets here (plain-English,
+flagged `decision required` or `ready for orchestrator`); `/clickfix-maintenance` ensures each is a
+ticket, **spawns read-only diagnosis agents to root-cause each one** (the `/clickfix-doc` pattern —
+findings written onto the ticket), and rules `decision required` items with you inline. **It
+diagnoses; it never fixes** — no code edits, no PRs, no fix agents. A fully diagnosed + ruled ticket
+is the finished product; **fixing is a separate, deliberate owner step, out of scope here.** It never
+touches the product bug ledger or the raw log data.
 
 ## Open — decision required
 
@@ -47,8 +48,9 @@ One line per benign finding with the date, so repeated noise is provably conside
 ## Ledger notes
 
 - The triage source appends only to the two "Open" sections and the no-action log.
-- `/clickfix-maintenance` is the only thread that records rulings, assigns sub-agents, and moves
-  rows through `logged → ruled → in-progress → done`. Nothing else writes here.
+- `/clickfix-maintenance` is the only thread that records rulings, spawns **read-only diagnosis
+  agents**, and moves rows through `logged → in-progress (diagnosing) → diagnosed + ruled`. It never
+  fixes, opens PRs, or launches fix agents. Nothing else writes here.
 - A ticket carries: stable id `maint-YYYYMMDD-<slug>`, 2-3 plain-English lines (what it is, whether
   it actually affects users/data or is internal noise, proposed action), effort S/M/L, Sentry
   shortId(s) + link, filed date.
