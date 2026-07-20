@@ -48,7 +48,7 @@ a pile of feedback while you click around, then action it all in Claude Code whe
 
 ```bash
 npm i -g github:emb91/clickfix     # installs the `clickfix` command (not on npm yet — from GitHub)
-clickfix install                    # adds /clickfix, /clickfix-doc, /clickfix-orchestrate, /clickfix-decisions, /clickfix-questions
+clickfix install                    # adds /clickfix, /clickfix-doc, /clickfix-orchestrate, /clickfix-decisions, /clickfix-questions, /clickfix-maintenance
 ```
 
 `clickfix install` only needs running once — the commands then work in **every** project.
@@ -322,6 +322,15 @@ Q&A to its own `.clickfix/clickfix_questions.md`, and closes it. A satisfying an
 the orchestrator. Only if you reject the answer ("no, this is a real problem because…") does it
 append a ticket to `clickfix_rootcause_bugs.md` — opening new work for the orchestrator. (Decisions
 *wait* on you; questions *resolve on answer* — hence separate threads.)
+
+**Maintenance (`/clickfix-maintenance`, its own stream).** For operational-health items that come
+from an *upstream* source rather than your clickthroughs — e.g. a scheduled Sentry-triage task that
+writes tickets into `.clickfix/maintenance_ledger.md`. It's a **self-contained orchestrator**: it
+rules on decision-required items with you **inline** (its own decision surface — maintenance
+decisions never mix into the product decision queue), then assigns sub-agents to fix the rest —
+worktree → audit → PR, same discipline as `/clickfix-orchestrate`. It reads only the maintenance
+ledger, never the product bug ledger or the raw log data. Different source, different cadence,
+different reviewer mindset — hence its own thread and ledger.
 
 The starter templates live in [`templates/orchestration/`](templates/orchestration/); see its
 [README](templates/orchestration/README.md) for the pattern. Entirely optional — the core
