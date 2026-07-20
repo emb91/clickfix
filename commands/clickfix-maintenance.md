@@ -34,10 +34,13 @@ The argument passed to this command is: `$ARGUMENTS`
 
 ## 3. Diagnose — read-only agents ONLY (never fix)
 
-- For each ticket needing investigation, spawn a **read-only diagnosis sub-agent** (the `/clickfix-doc`
-  pattern): it traces the root cause in the codebase, works out the concrete fix, and writes its
+- **Every un-diagnosed ticket in "Open — ready for orchestrator" is un-investigated — fire on it
+  immediately.** For each, spawn a **read-only diagnosis sub-agent** (the `/clickfix-doc` pattern)
+  right away: it traces the root cause in the codebase, works out the concrete fix, and writes its
   findings back onto the ticket (root cause `file:line`, proposed fix, risks). It changes **no** code
-  and opens **no** PR.
+  and opens **no** PR. (Respect the WIP cap + launch gate — queue if you're already at the cap.)
+- Diagnosing a `decision required` ticket the same way is fine and sharpens your ruling recommendation
+  — but you still don't act on it until I rule.
 - Move a ticket under investigation to "In progress" with the agent's real Task ID; move it back with
   the diagnosis attached when the agent returns.
 - **You never spawn a fix agent, never edit code, never open a PR.** A fully diagnosed ticket is the
