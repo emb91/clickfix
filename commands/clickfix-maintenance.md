@@ -24,20 +24,21 @@ The argument passed to this command is: `$ARGUMENTS`
 
 ## 2. Rule on decisions inline (your own surface — not the product decision queue)
 
-- Read "Awaiting your ruling". Present it as a clean numbered **one-liner digest**:
+- Read "Open — decision required". Present it as a clean numbered **one-liner digest**:
   `1. <ticket> — <what needs deciding>` (recommendation + default, age). Stay silent if empty.
 - `decision required` = anything touching **product behavior, spend, copy, or anything
   irreversible**. Ask me to rule (implement / park / reject / revise); keep it one-line-answerable.
-  Record the ruling in the ledger. Approved items move to "Ready to assign".
+  Record the ruling in the ledger. Approved items move to "Open — ready for orchestrator".
 
 ## 3. Assign + fix (like Orchestrate, on the maintenance stream)
 
-- For each "Ready to assign" ticket, ensure exactly one owning sub-agent working in its own
+- For each "Open — ready for orchestrator" ticket, ensure exactly one owning sub-agent working in its own
   worktree/branch off latest `main` (respect the WIP cap). It fixes → tests → checks 2nd/3rd-order
   impacts → reports back with the standard handoff.
 - Audit every result before PR (inspect the diff, run relevant checks, look for regressions); send
   concrete blockers back if it isn't clean. Open **one PR per ticket/theme**, only after the audit
-  passes. Move merged work to "Done / merged".
+  passes. Move merged work to "Done". (Benign findings the triage parked under "Considered, no
+  action (log)" need nothing from you — leave them.)
 
 ## 4. Report
 
@@ -45,7 +46,7 @@ One structured heartbeat, same shape every run, minimal narration:
 - **🗳️ Maintenance decisions** — the digest, first (or "No open decisions").
 - **State** — open PRs · shared checkout · active agents.
 - **Did this run** — assigned / audited / merged, or "nothing — reconcile only".
-- **Ready to assign** · **In progress** · **PRs ready** (merge-ready clickable links only).
+- **Open — ready for orchestrator** · **In progress** · **PRs ready** (merge-ready clickable links only).
 - **Next** — the one action you recommend + any ruling you need from me.
 
 ## Rules

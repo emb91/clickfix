@@ -5,46 +5,52 @@
 > and from your error-logging (Sentry) data.** `/clickfix-maintenance` owns it.
 
 Maintenance tickets come from an **upstream source** (e.g. a scheduled Sentry-triage task), not the
-browser toolbar. They're operational-health items — errors, warnings, dependency/version nits — not
-product feedback. `/clickfix-maintenance` is a **self-contained orchestrator** for this stream: it
-rules on what needs your call, assigns sub-agents to fix the rest (worktree → audit → PR), and
-records everything here. It never touches the product bug ledger or the raw log data.
+browser toolbar — operational-health items (errors, warnings, version nits), not product feedback.
+This is a **self-contained** thread: the triage task appends new tickets here (plain-English,
+flagged `decision required` or `ready for orchestrator`); `/clickfix-maintenance` records your
+rulings and then **assigns approved tickets to its own sub-agents to fix** (worktree → audit → PR),
+the same discipline the orchestrator uses but on the maintenance stream. It does **not** promote to
+`open_ticket_list.md` or hand work to the product orchestrator, and never touches the product bug
+ledger or the raw log data.
 
-## How this ledger is used
+## Open — decision required
 
-- The **triage source appends** new tickets under "Awaiting your ruling" (flagged
-  `decision required`) or "Ready to assign" (flagged `ready for orchestrator`).
-- `/clickfix-maintenance` **rules on decision-required items with you inline** — this ledger is the
-  decision surface; maintenance decisions do **not** go to the product `owner_decision_queue.md`.
-- It then assigns approved/ready tickets to sub-agents and moves rows through the lifecycle:
-  `logged → awaiting-ruling → approved → assigned → in-audit → merged` (or `parked`).
+Anything touching product behavior, spend, copy, or anything irreversible — needs your ruling first.
 
-## Awaiting your ruling  (decision-required — source for the maintenance decisions digest)
-
-| # | Ticket / Sentry issue | What needs deciding | Recommendation + default | Age (runs) | State |
+| Ticket | Finding / impact / proposed action | Effort | Sentry | Filed | State |
 | --- | --- | --- | --- | --- | --- |
-| _(none)_ | - | - | - | - | - |
 
-## Ready to assign  (approved / no ruling needed)
+## Open — ready for orchestrator
 
-| # | Ticket / Sentry issue | Fix summary | Files / area | State |
-| --- | --- | --- | --- | --- |
-| _(none)_ | - | - | - | - |
+Unambiguous fixes needing no ruling — `/clickfix-maintenance` assigns a sub-agent directly.
+
+| Ticket | Finding / impact / proposed action | Effort | Sentry | Filed | State |
+| --- | --- | --- | --- | --- | --- |
 
 ## In progress  (agent registry — keyed to real Task IDs)
 
-| Task ID | Ticket | Branch / worktree | State | Next checkpoint |
+| Task ID | Ticket | Branch / worktree | Status | Next checkpoint |
 | --- | --- | --- | --- | --- |
-| _(none)_ | - | - | No agents launched. | - |
 
-## Done / merged
+## Done
 
-| Ticket | Resolution |
-| --- | --- |
-| _(none yet)_ | - |
-
-## Residue / unknowns
-
-| Item | Type | Next action |
+| Ticket | Title | Outcome |
 | --- | --- | --- |
-| _(none)_ | - | - |
+
+## Considered, no action (log)
+
+One line per benign finding with the date, so repeated noise is provably considered without re-triage.
+
+| Date | Finding (Sentry shortId) | Why no action |
+| --- | --- | --- |
+
+## Ledger notes
+
+- The triage source appends only to the two "Open" sections and the no-action log.
+- `/clickfix-maintenance` is the only thread that records rulings, assigns sub-agents, and moves
+  rows through `logged → ruled → in-progress → done`. Nothing else writes here.
+- A ticket carries: stable id `maint-YYYYMMDD-<slug>`, 2-3 plain-English lines (what it is, whether
+  it actually affects users/data or is internal noise, proposed action), effort S/M/L, Sentry
+  shortId(s) + link, filed date.
+- Decisions are ruled **here**, inline — never in the product `owner_decision_queue.md`.
+- Keep done tickets as short history rather than deleting them.
